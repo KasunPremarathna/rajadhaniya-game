@@ -5,12 +5,20 @@ import 'screens/era_selection_screen.dart';
 import 'screens/language_selection_screen.dart';
 import 'screens/update_screen.dart';
 import 'screens/no_internet_screen.dart';
+
 import 'bridge/platform_view_registry.dart';
 import 'bridge/js_bridge.dart';
 import 'models/historical_era.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'firebase_options.dart';
+import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   registerPhaserView();
   final prefs = await SharedPreferences.getInstance();
   final initialLang = prefs.getString('selected_language');
@@ -95,9 +103,11 @@ class _RajadhaniyaAppState extends State<RajadhaniyaApp> {
         );
       },
       home: _LandscapeWrapper(
-        child: widget.initialLanguage == null
-            ? const LanguageSelectionScreen()
-            : KingdomViewScreen(era: historicalEras.first),
+        child: FirebaseAuth.instance.currentUser == null
+            ? const LoginScreen()
+            : (widget.initialLanguage == null
+                ? const LanguageSelectionScreen()
+                : KingdomViewScreen(era: historicalEras.first)),
       ),
       navigatorKey: _navigatorKey,
     );

@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../bridge/js_bridge.dart';
 import '../models/historical_era.dart';
+import '../services/firestore_service.dart';
 import 'update_screen.dart';
 import 'sena_kanda_screen.dart';
+import 'login_screen.dart';
 
 class KingdomViewScreen extends StatefulWidget {
   final HistoricalEra era;
@@ -15,6 +19,7 @@ class KingdomViewScreen extends StatefulWidget {
 
 class _KingdomViewScreenState extends State<KingdomViewScreen> {
   Map<String, dynamic>? _hudData;
+  Timer? _cloudSyncTimer;
 
   String _language = 'en';
 
@@ -23,12 +28,38 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     super.initState();
     JsBridge.registerFlutterCallback(_onJsEvent);
     _initGame();
+    
+    // Start background cloud sync every 60 seconds
+    _cloudSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) => _syncToCloud());
+  }
+
+  @override
+  void dispose() {
+    _cloudSyncTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _syncToCloud() async {
+    if (_hudData != null && mounted) {
+      await FirestoreService.saveUserData({
+        'gold': _hudData!['gold'] ?? 0,
+        'tasks': _hudData!['tasks'] ?? {},
+        'era_id': widget.era.id,
+        'era_name': widget.era.name,
+      });
+    }
   }
 
   Future<void> _initGame() async {
     final prefs = await SharedPreferences.getInstance();
     _language = prefs.getString('selected_language') ?? 'en';
     if (!mounted) return;
+
+    // Load cloud save data and inject into localPlayerData via JS
+    final cloudData = await FirestoreService.loadUserData();
+    if (cloudData != null) {
+      JsBridge.callJs('restorePlayerData', cloudData);
+    }
 
     // Boot the game now that we bypassed EraSelectionScreen
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -65,6 +96,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         case 'Food': return 'ආහාර';
         case 'Hut': return 'පැල';
         case 'Fish': return 'මාළු';
+        case 'Save & Exit': return 'සුරැකීම සහ පිටවීම';
+        case 'Do you want to save your progress to the cloud before exiting?': return 'පිටවීමට පෙර ඔබගේ ප්‍රගතිය ක්ලවුඩ් වෙත සුරැකීමට අවශ්‍යද?';
+        case 'Cancel': return 'අවලංගු කරන්න';
+        case 'Exit Game': return 'පිටවීම';
       }
     }
     return key;
@@ -77,6 +112,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       setState(() {
         _hudData = data;
       });
+      // Cloud sync is now handled by _cloudSyncTimer in the background to save costs.
     } else if (type == 'version_mismatch') {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -88,6 +124,49 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _showExitDialog() async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2C3E50),
+        title: Text(
+          _translate('Save & Exit'),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          _translate('Do you want to save your progress to the cloud before exiting?'),
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(_translate('Cancel'), style: const TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4A017)),
+            onPressed: () async {
+              final nav = Navigator.of(context);
+              if (_hudData != null) {
+                await FirestoreService.saveUserData({
+                  'gold': _hudData!['gold'] ?? 0,
+                  'tasks': _hudData!['tasks'] ?? {},
+                  'era_id': widget.era.id,
+                  'era_name': widget.era.name,
+                });
+              }
+              await FirebaseAuth.instance.signOut();
+              nav.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+            child: Text(_translate('Save & Exit'), style: const TextStyle(color: Colors.black87)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -150,8 +229,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildCircularButton(Icons.menu, _translate('Menu'), () {
-                  // Show side menu
+                _buildCircularButton(Icons.logout, _translate('Exit Game'), () {
+                  _showExitDialog();
                 }),
                 Flexible(
                   child: FittedBox(
@@ -346,12 +425,20 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                widget.era.name,
+                FirebaseAuth.instance.currentUser?.displayName ?? widget.era.name,
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                   shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                ),
+              ),
+              Text(
+                widget.era.name,
+                style: const TextStyle(
+                  color: Color(0xFFD4A017),
+                  fontSize: 11,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 3)],
                 ),
               ),
               const SizedBox(height: 4),

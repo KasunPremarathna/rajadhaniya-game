@@ -26,6 +26,14 @@ class JsBridge {
     js.context.callMethod('enterBuildMode', [buildingType]);
   }
 
+  /// Generic JS bridge call — calls window[fnName](jsonEncode(args))
+  static void callJs(String fnName, Map<String, dynamic> args) {
+    final payload = jsonEncode(args);
+    if (js.context.hasProperty(fnName)) {
+      js.context.callMethod(fnName, [payload]);
+    }
+  }
+
   static bool get isGameActive {
     final val = js.context['__gameActive'];
     return val == true;
