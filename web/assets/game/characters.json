@@ -1,0 +1,72 @@
+{
+  "characters": [
+    {
+      "id": "player",
+      "name": "Player Character",
+      "role": "Kingdom Builder",
+      "description": "The main controllable character. Moves around the isometric grid using tap-to-move, harvests resources, constructs buildings, and raids enemy kingdoms. Their specific title changes based on the selected historical Era."
+    },
+    {
+      "id": "npc_citizen",
+      "name": "Citizen",
+      "role": "Autonomous Villager",
+      "description": "Non-playable characters (NPCs) that spawn randomly on the map. They use A* pathfinding algorithms to wander around the kingdom autonomously, avoiding buildings and obstacles."
+    },
+    {
+      "id": "enemy_king_ravana",
+      "name": "King Ravana",
+      "role": "Enemy Kingdom Leader (Level 1)",
+      "description": "Controls a level 1 enemy base located near the borders. The player can attack his base to raid and steal up to 200 Gold."
+    },
+    {
+      "id": "enemy_lord_pandya",
+      "name": "Lord Pandya",
+      "role": "Enemy Kingdom Leader (Level 2)",
+      "description": "Controls a level 2 enemy base. A tougher kingdom that the player can attack to raid up to 300 Gold."
+    },
+    {
+      "id": "enemy_chief_yodha",
+      "name": "Chief Yodha",
+      "role": "Enemy Kingdom Leader (Level 3)",
+      "description": "Controls a level 3 enemy base. The player can attack his base to raid up to 250 Gold."
+    },
+    {
+      "id": "animal_cow_deer",
+      "name": "Cow / Deer",
+      "role": "Wildlife Resource",
+      "description": "Animated wildlife that populate the map. The player can interact with them to hunt and gather Food resources."
+    }
+  ],
+  "player_era_titles": [
+    {
+      "era": "prehistoric",
+      "title_en": "Tribal Settler",
+      "title_si": "ගෝත්‍රික වැසියා"
+    },
+    {
+      "era": "anuradhapura",
+      "title_en": "Rajarna Farmer",
+      "title_si": "රජරට ගොවියා"
+    },
+    {
+      "era": "polonnaruwa",
+      "title_en": "Polonnaruwa Trader",
+      "title_si": "පොළොන්නරු වෙළෙන්දා"
+    },
+    {
+      "era": "transitional",
+      "title_en": "Border Guardian",
+      "title_si": "මායිම් රකින්නා"
+    },
+    {
+      "era": "colonial",
+      "title_en": "Colonial Merchant",
+      "title_si": "යටත්වැසි වෙළෙන්දා"
+    },
+    {
+      "era": "modern",
+      "title_en": "Urban Citizen",
+      "title_si": "නාගරික ප්‍රජාව"
+    }
+  ]
+}
