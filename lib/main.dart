@@ -11,6 +11,7 @@ import 'bridge/js_bridge.dart';
 import 'models/historical_era.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 
@@ -80,6 +81,7 @@ class _RajadhaniyaAppState extends State<RajadhaniyaApp> {
       title: 'Rajadhaniya',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        textTheme: GoogleFonts.notoSansSinhalaTextTheme(),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF5D4037),
           brightness: Brightness.light,

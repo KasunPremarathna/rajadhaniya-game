@@ -119,8 +119,7 @@
     var ci = eraCharacterMap[eId] || eraCharacterMap.prehistoric;
     Object.assign(localPlayerData, {
       eraId: eId, eraName: eName, eraBonus: eBonus, lat: eLat, lng: eLng,
-      role: 'Citizen', gold: 500,
-      inventory: { wood: 10, stone: 5, food: 20 },
+      role: 'Citizen',
       character: { name: ci.name, avatar: eId },
     });
     window.__gameState = { eraId: eId, originLat: eLat, originLng: eLng };

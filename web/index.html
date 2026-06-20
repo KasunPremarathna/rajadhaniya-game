@@ -12,6 +12,24 @@
   <link rel="icon" type="image/png" href="favicon.png"/>
   <title>Rajadhaniya</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Firebase Core and Services for Production Web -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script>
+    var firebaseConfig = {
+      apiKey: "AIzaSyCZxVuGgBB9NTMsfmjsRjLEIfNyGH-IWq4",
+      authDomain: "rajadhanigamesl.firebaseapp.com",
+      projectId: "rajadhanigamesl",
+      storageBucket: "rajadhanigamesl.firebasestorage.app",
+      messagingSenderId: "999174467302",
+      appId: "1:999174467302:web:7d98924a35f738657f1527",
+      measurementId: "G-JDML960GB4"
+    };
+    firebase.initializeApp(firebaseConfig);
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;600;700&display=swap" rel="stylesheet">
@@ -102,9 +120,7 @@
     window.addEventListener('load', function() {
       _flutter.loader.load({
         onEntrypointLoaded: async function(engineInitializer) {
-          const appRunner = await engineInitializer.initializeEngine({
-            renderer: 'html',
-          });
+          const appRunner = await engineInitializer.initializeEngine();
           
           clearInterval(splashInterval);
           document.getElementById('splash-fill').style.animation = 'none';
