@@ -152,6 +152,15 @@ When you modify `web/game_bridge.js` or any Phaser-related file, update this sec
 
 ### Change Log
 
+**2026-06-20**: Stability Fixes & Harvesting UI Overhaul.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` through `v1.3.11`.
+- **WebGL Crash Fix**: Forced Flutter engine to use `renderer: 'html'` in `index.html`. This permanently solves the `WebGL Context lost` crash caused by CanvasKit and Phaser competing for context limits.
+- **Sprite Scaling**: Standardized Deer and Cow asset scaling from `0.08` to `0.25` to perfectly match the player and NPC visual dimensions.
+- **Harvest Interaction**: Replaced the previous double-tap requirement with an instant single-tap interaction for game grid objects. Tapping an object no longer moves the player character to that tile.
+- **UI Redesign**: Completely overhauled the Contextual Popup Menu (`createContextualMenu`). Expanded the layout from 140x130 to 220x180. Added an aesthetic drop-shadow, a dedicated dark-brown top banner with a gold separator line, an interactive `✖` close button, and a clean tabular layout for Time/Yield data. Upgraded action buttons with distinct colors, strokes, and hover areas.
+- **Click Bubbling Bug Fixed**: Resolved a critical interaction bug where tapping "Start Harvest" inside the popup would bubble down to the object underneath, causing the menu to instantly re-open and cover the progress bar. Fixed by applying `ev.stopPropagation()` to all popup interaction zones.
+- **Progress Render Fix**: Prevented a silent WebGL crash/failure by enforcing a minimum width of `8` on the `fillRoundedRect` harvesting progress bar to satisfy its `4px` border radius requirement.
+
 **2026-06-20**: Sena Kanda (Training Barracks) Dashboard Integration.
 - **Flutter UI**: Created `SenaKandaScreen` as a modal bottom sheet to act as the troop training interface.
 - **Data Models**: Converted troop JSON data into a strongly-typed `lib/models/troop.dart` constant list for synchronous rendering.

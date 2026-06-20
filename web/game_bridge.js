@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.1';
+  var GAME_ASSET_VERSION = 'v1.3.11';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -360,7 +360,7 @@
         sg.generateTexture('shadow', 32, 16); sg.destroy();
 
         // Load the character sprite sheet
-        s.load.spritesheet('player', 'assets/game/images/sprites/char_prehistoric.png', {
+        s.load.spritesheet('player', 'assets/game/images/sprites/char_prehistoric.png?v=' + GAME_ASSET_VERSION, {
           frameWidth: 352,
           frameHeight: 256
         });
@@ -472,11 +472,12 @@
         ui.bg = loadedBg;
       }
 
-      var grace = 100, elapsed = 0;
-      scene.time.addEvent({
+      var grace = 100, elapsed = 0, isFading = false;
+      var loaderTimer = scene.time.addEvent({
         delay: 50,
         repeat: 39,
         callback: function () {
+          if (isFading) return;
           elapsed += 50;
           var nativeP = ui._progress || 0;
           var display = Math.max(nativeP, Math.min(1, elapsed / grace));
@@ -484,13 +485,17 @@
           ui.fl.clear();
           ui.fl.fillStyle(0xD4AF37, 1);
           ui.fl.fillRoundedRect(ui.bX, ui.bcY, ui.bW * display, ui.bH, 4);
-          ui.pt.setText(
-            '\u0DC3\u0DB8\u0DCA\u0DB4\u0DAD\u0DCA \u0DB6\u0DCF\u0D9C\u0DAD \u0DC0\u0DD9\u0DB8\u0DD2\u0DB1\u0DCA \u0DB4\u0DC0\u0DAD\u0DD2\u0DB1\u0DCA\u0DB1\u0DDA... ' +
-            Math.round(display * 100) + '%'
-          );
+          if (ui.pt && ui.pt.active) {
+            ui.pt.setText(
+              '\u0DC3\u0DB8\u0DCA\u0DB4\u0DAD\u0DCA \u0DB6\u0DCF\u0D9C\u0DAD \u0DC0\u0DD9\u0DB8\u0DD2\u0DB1\u0DCA \u0DB4\u0DC0\u0DAD\u0DD2\u0DB1\u0DCA\u0DB1\u0DDA... ' +
+              Math.round(display * 100) + '%'
+            );
+          }
 
           if (elapsed >= grace && (ui.ready || elapsed >= 2000)) {
-            ui.pt.setText('\u0DC3\u0DB8\u0DCD\u0DB4\u0DD6\u0DBB\u0DCA\u0DAB\u0DBA\u0DD2!');
+            isFading = true;
+            if (loaderTimer) loaderTimer.remove();
+            if (ui.pt && ui.pt.active) ui.pt.setText('\u0DC3\u0DB8\u0DCD\u0DB4\u0DD6\u0DBB\u0DCA\u0DAB\u0DBA\u0DD2!');
             scene.tweens.add({
               targets: [ui.bg, ui.ov, ui.tr, ui.fl, ui.pt],
               alpha: 0, duration: 400, ease: 'Power2',
@@ -647,7 +652,6 @@
           updateGhostBuildingPos(scene, tile.tx, tile.ty, ox, oy);
         }
       });
-
       scene.input.on('pointerdown', function (ptr) {
         if (scene.input.pointer1.isDown && scene.input.pointer2.isDown) return;
 
@@ -961,10 +965,10 @@
           if (cfg.type === 'deer') {
             spr = scene.add.sprite(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
             if (scene.anims && scene.anims.exists('cow-walk')) spr.play('cow-walk', true);
-            spr.setScale(0.12);
+            spr.setScale(0.25);
           } else {
             spr = scene.add.image(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
-            spr.setScale(cfg.type === 'tree' ? 0.14 : 0.12);
+            spr.setScale(cfg.type === 'tree' ? 0.07 : 0.06);
           }
           resourceSprites.push({ type: cfg.type, sprite: spr, shadow: shad, tileX: tx, tileY: ty });
 
@@ -993,7 +997,7 @@
           var pos = tileToWorld(c, r, ox, oy);
           var spr = scene.add.image(pos.x, pos.y, 'tree')
             .setOrigin(0.5, 0.8).setDepth(c + r + 1)
-            .setScale(0.12 + Math.random() * 0.05)
+            .setScale(0.06 + Math.random() * 0.03)
             .setTint(0x2e5c20);
 
           scene.tweens.add({
@@ -1284,15 +1288,33 @@
       
       var cx = res.sprite.x;
       var cy = res.sprite.y - 40;
-
       var elems = [];
 
+      // 1. Draw a shadow for depth
+      var shadow = scene.add.graphics().setDepth(199);
+      shadow.fillStyle(0x000000, 0.5);
+      shadow.fillRoundedRect(cx - 105, cy - 95, 220, 180, 12);
+      elems.push(shadow);
+
+      // 2. Main Background Box
       var bg = scene.add.graphics().setDepth(200);
-      bg.fillStyle(0x1A1512, 0.92);
-      bg.fillRoundedRect(cx - 50, cy - 60, 100, 80, 10);
-      bg.lineStyle(2, 0xD4AF37, 0.9);
-      bg.strokeRoundedRect(cx - 50, cy - 60, 100, 80, 10);
+      bg.fillStyle(0x1F1A17, 0.98); // Dark rich brown background
+      bg.fillRoundedRect(cx - 110, cy - 100, 220, 180, 12);
+      bg.lineStyle(2, 0xD4AF37, 1); // Gold border
+      bg.strokeRoundedRect(cx - 110, cy - 100, 220, 180, 12);
       elems.push(bg);
+
+      // 3. Title Banner Background
+      var banner = scene.add.graphics().setDepth(200);
+      banner.fillStyle(0x2D241C, 1);
+      banner.fillRoundedRect(cx - 108, cy - 98, 216, 40, { tl: 10, tr: 10, bl: 0, br: 0 });
+      // Separator line
+      banner.lineStyle(1, 0xD4AF37, 0.5);
+      banner.beginPath();
+      banner.moveTo(cx - 110, cy - 58);
+      banner.lineTo(cx + 110, cy - 58);
+      banner.strokePath();
+      elems.push(banner);
 
       var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence' };
       var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට' };
@@ -1300,48 +1322,111 @@
       var taskKey = taskMap[res.type];
       var cfg = TASKS_CONFIG[taskKey];
 
+      // 4. Title Text (Centered in Banner)
       var displayLabel = window.gameLanguage === 'si' ? labelMapSi[res.type] : labelMap[res.type];
-      var title = scene.add.text(cx, cy - 50, displayLabel, {
-        fontFamily: 'monospace', fontSize: '12px', color: '#FFF'
+      var title = scene.add.text(cx, cy - 78, displayLabel, {
+        fontFamily: 'monospace', fontSize: '18px', color: '#FFD700', fontStyle: 'bold'
       }).setOrigin(0.5).setDepth(201);
       elems.push(title);
 
+      // 5. Close (X) Button
+      var closeBtn = scene.add.text(cx + 90, cy - 88, '✖', {
+        fontFamily: 'sans-serif', fontSize: '18px', color: '#AAAAAA'
+      }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+      closeBtn.on('pointerover', function() { closeBtn.setColor('#FFFFFF'); });
+      closeBtn.on('pointerout', function() { closeBtn.setColor('#AAAAAA'); });
+      closeBtn.on('pointerdown', function(ptr, localX, localY, ev) {
+        if (ev) ev.stopPropagation();
+        if (ptr.event) ptr.event.stopPropagation();
+        closeContextualMenu(scene);
+      });
+      elems.push(closeBtn);
+
+      // 6. Production Details (Grid Layout)
+      var isSi = (window.gameLanguage === 'si');
+      
+      if (res.type === 'fence') {
+        var yieldLabel = scene.add.text(cx, cy - 20, isSi ? 'අස්වැන්න: +1 🪵' : 'Yield: +1 🪵', {
+          fontFamily: 'monospace', fontSize: '15px', color: '#4CAF50', align: 'center'
+        }).setOrigin(0.5).setDepth(201);
+        elems.push(yieldLabel);
+      } else {
+        // Time Row
+        var timeLabel = scene.add.text(cx - 90, cy - 40, isSi ? '⏱️ කාලය:' : '⏱️ Time:', {
+          fontFamily: 'monospace', fontSize: '14px', color: '#CCCCCC'
+        }).setOrigin(0, 0.5).setDepth(201);
+        elems.push(timeLabel);
+
+        var timeVal = scene.add.text(cx + 90, cy - 40, '10s', {
+          fontFamily: 'monospace', fontSize: '14px', color: '#FFF'
+        }).setOrigin(1, 0.5).setDepth(201);
+        elems.push(timeVal);
+
+        // Yield Row
+        var yieldText = scene.add.text(cx - 90, cy - 10, isSi ? '🎁 අස්වැන්න:' : '🎁 Yield:', {
+          fontFamily: 'monospace', fontSize: '14px', color: '#CCCCCC'
+        }).setOrigin(0, 0.5).setDepth(201);
+        elems.push(yieldText);
+
+        var yields = [];
+        if (cfg && cfg.icon) yields.push('1 ' + cfg.icon);
+        if (res.type === 'gem_rock') yields.push('30 🪙');
+        if (res.type === 'deer') { yields.push('10 🪙'); yields.push('2 🥩'); }
+        if (res.type === 'tree') yields.push('5 🪙');
+        if (res.type === 'lake') { yields.push('15 🪙'); yields.push('1 🥩'); }
+        
+        var yieldVal = scene.add.text(cx + 90, cy - 10, yields.join('  '), {
+          fontFamily: 'monospace', fontSize: '14px', color: '#4CAF50', fontStyle: 'bold'
+        }).setOrigin(1, 0.5).setDepth(201);
+        elems.push(yieldVal);
+      }
+
+      // 7. Action Button
+      var btnY = cy + 45;
       if (res.type === 'fence') {
         var btn = scene.add.graphics().setDepth(201);
-        btn.fillStyle(0xFF6B6B, 1);
-        btn.fillRoundedRect(cx - 40, cy - 35, 80, 30, 8);
+        btn.fillStyle(0xCC0000, 1);
+        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
+        btn.lineStyle(2, 0xFF6B6B, 1);
+        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
         elems.push(btn);
 
-        var rmTxt = window.gameLanguage === 'si' ? '\u2715 ඉවත් කරන්න' : '\u2715 Remove';
-        var txt = scene.add.text(cx, cy - 20, rmTxt, {
-          fontFamily: 'monospace', fontSize: '10px', color: '#FFF'
+        var rmTxt = isSi ? '\u2715 ඉවත් කරන්න' : '\u2715 Remove';
+        var txt = scene.add.text(cx, btnY, rmTxt, {
+          fontFamily: 'monospace', fontSize: '16px', color: '#FFF', fontStyle: 'bold'
         }).setOrigin(0.5).setDepth(202);
         elems.push(txt);
 
-        var zone = scene.add.zone(cx, cy - 20, 80, 30).setDepth(203).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', function() {
+        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
+        zone.on('pointerdown', function(ptr, localX, localY, ev) {
+          if (ev) ev.stopPropagation();
+          if (ptr.event) ptr.event.stopPropagation();
           closeContextualMenu(scene);
           removeBuilding(scene, res.buildingData);
         });
         elems.push(zone);
+
       } else if (!res.isHarvesting) {
         var btn = scene.add.graphics().setDepth(201);
-        btn.fillStyle(0x4CAF50, 1);
-        btn.fillRoundedRect(cx - 40, cy - 35, 80, 30, 8);
+        btn.fillStyle(0x2E7D32, 1); // Dark green base
+        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
+        btn.lineStyle(2, 0x4CAF50, 1); // Bright green border
+        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
         elems.push(btn);
 
-        var harvestTxt = window.gameLanguage === 'si' ? 'අස්වනු' : 'Harvest';
+        var harvestTxt = isSi ? 'අස්වනු නෙලන්න' : 'Start Harvest';
         var iconStr = cfg.icon + ' ' + harvestTxt;
-        var txt = scene.add.text(cx, cy - 20, iconStr, {
-          fontFamily: 'monospace', fontSize: '10px', color: '#FFF'
+        var txt = scene.add.text(cx, btnY, iconStr, {
+          fontFamily: 'monospace', fontSize: '15px', color: '#FFF', fontStyle: 'bold'
         }).setOrigin(0.5).setDepth(202);
         elems.push(txt);
 
-        var zone = scene.add.zone(cx, cy - 20, 80, 30).setDepth(203).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', function() {
+        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
+        zone.on('pointerdown', function(ptr, localX, localY, ev) {
+          if (ev) ev.stopPropagation();
+          if (ptr.event) ptr.event.stopPropagation();
           closeContextualMenu(scene);
           if (res.isBuilding) {
-            // Fake harvest process for buildings
             res.isHarvesting = true;
             playHarvestEffect(scene, cx, cy + 40, 'spark');
             setTimeout(function() { 
@@ -1354,20 +1439,25 @@
           }
         });
         elems.push(zone);
+
       } else {
         var btn = scene.add.graphics().setDepth(201);
-        btn.fillStyle(0xFFD700, 1);
-        btn.fillRoundedRect(cx - 40, cy - 35, 80, 30, 8);
+        btn.fillStyle(0xFFB300, 1); // Dark gold base
+        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
+        btn.lineStyle(2, 0xFFE082, 1); // Bright gold border
+        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
         elems.push(btn);
 
-        var boostTxt = window.gameLanguage === 'si' ? '\u26A1 50 රත්‍රන්' : '\u26A1 50 Gold';
-        var txt = scene.add.text(cx, cy - 20, boostTxt, {
-          fontFamily: 'monospace', fontSize: '10px', color: '#000', fontStyle: 'bold'
+        var boostTxt = isSi ? '\u26A1 50 රත්‍රන්' : '\u26A1 50 Gold';
+        var txt = scene.add.text(cx, btnY, boostTxt, {
+          fontFamily: 'monospace', fontSize: '16px', color: '#000', fontStyle: 'bold'
         }).setOrigin(0.5).setDepth(202);
         elems.push(txt);
 
-        var zone = scene.add.zone(cx, cy - 20, 80, 30).setDepth(203).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', function() {
+        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
+        zone.on('pointerdown', function(ptr, localX, localY, ev) {
+          if (ev) ev.stopPropagation();
+          if (ptr.event) ptr.event.stopPropagation();
           closeContextualMenu(scene);
           boostHarvest(scene, res, taskKey);
         });
@@ -1427,14 +1517,7 @@
     }
 
     function startHarvest(scene, res, taskKey) {
-      if (!playerSprite) return;
-      var pTile = worldToTile(playerSprite.x, playerSprite.y, scene._ox, scene._oy);
-      var d = distToTile(pTile.tx, pTile.ty, res);
-      if (d > 2) {
-        var errMove = window.gameLanguage === 'si' ? '\u274C ළං වෙන්න!' : '\u274C Move closer!';
-        floatText(scene, errMove, res.sprite.x, res.sprite.y - 30, '#FF6B6B');
-        return;
-      }
+      if (res.isHarvesting) return; // already harvesting this resource
 
       res.isHarvesting = true;
       var duration = 10000;
@@ -1464,6 +1547,9 @@
           if (bgBar && bgBar.active) bgBar.destroy();
           if (fgBar && fgBar.active) fgBar.destroy();
           if (timerLabel && timerLabel.active) timerLabel.destroy();
+          // Remove the per-resource update listener
+          scene.events.off('update', res._updateListener);
+          res._updateListener = null;
           finishHarvest(scene, res, taskKey);
         }
       });
@@ -1472,7 +1558,8 @@
       res.bgBar = bgBar;
       res.fgBar = fgBar;
 
-      scene.events.on('update', function() {
+      // Each resource gets its OWN named listener so they never affect each other
+      res._updateListener = function() {
         if (!res.isHarvesting || !fgBar.active) return;
         var p = timerEvent.getProgress();
 
@@ -1480,7 +1567,8 @@
         fgBar.clear();
         var barColor = p < 0.5 ? 0x4CAF50 : p < 0.8 ? 0xFFC107 : 0xFF5722;
         fgBar.fillStyle(barColor, 1);
-        fgBar.fillRoundedRect(res.sprite.x - 22, res.sprite.y - 42, 44 * p, 8, 4);
+        var w = Math.max(8, 44 * p);
+        fgBar.fillRoundedRect(res.sprite.x - 22, res.sprite.y - 42, w, 8, 4);
 
         /* update countdown label */
         if (timerLabel && timerLabel.active) {
@@ -1488,10 +1576,10 @@
           timerLabel.setText(secsLeft + 's');
           timerLabel.setX(res.sprite.x);
           timerLabel.setY(res.sprite.y - 50);
-          /* colour: green → yellow → red as time runs out */
           timerLabel.setStyle({ color: p < 0.5 ? '#AAFFAA' : p < 0.8 ? '#FFD700' : '#FF6B6B' });
         }
-      });
+      };
+      scene.events.on('update', res._updateListener);
     }
 
     function boostHarvest(scene, res, taskKey) {
@@ -1507,6 +1595,7 @@
       if (res.bgBar) res.bgBar.destroy();
       if (res.fgBar) res.fgBar.destroy();
       if (res.timerLabel && res.timerLabel.active) res.timerLabel.destroy();
+      if (res._updateListener) { scene.events.off('update', res._updateListener); res._updateListener = null; }
 
       var boostMsg = window.gameLanguage === 'si' ? '\u26A1 වේගවත් කළා!' : '\u26A1 Boosted!';
       floatText(scene, boostMsg, res.sprite.x, res.sprite.y - 50, '#FFD700');
