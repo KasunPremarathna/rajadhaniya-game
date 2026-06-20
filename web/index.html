@@ -35,7 +35,20 @@
   <div id="flutter-container">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="game_bridge.js"></script>
-    <script src="flutter_bootstrap.js" async></script>
   </div>
+  <script>
+    // Force Flutter to use HTML renderer to avoid WebGL context conflicts with Phaser
+    window.addEventListener('load', function() {
+      _flutter.loader.load({
+        onEntrypointLoaded: async function(engineInitializer) {
+          const appRunner = await engineInitializer.initializeEngine({
+            renderer: 'html',
+          });
+          await appRunner.runApp();
+        }
+      });
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
