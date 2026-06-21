@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.22';
+  var GAME_ASSET_VERSION = 'v1.3.33';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -65,19 +65,31 @@
   var ghostBuilding = null;
   var buildConfirmElements = null;
   var GLOBAL_CONFIG = { treeClearCost: 100 };
+  /* Edit / Drag-and-Drop globals */
+  var editMode = null;        // holds the building object being repositioned
+  var editGhost = null;       // ghost sprite shown while dragging
+  var editValidOverlay = null;// green/red tint overlay
+  var editOrigTx = 0;         // original tile position before move
+  var editOrigTy = 0;
+  var longPressTimer = null;  // Phaser timer for long-press detection
+  var longPressPtr = null;    // pointer that triggered long-press
 
   var localPlayerData = {
     eraId: '', eraName: '', eraBonus: '', lat: 0, lng: 0,
     role: 'Citizen', gold: 500,
-    inventory: { wood: 10, stone: 5, food: 20 },
+    inventory: { wood: 10, stone: 5, food: 20, meat: 0, milk: 0 },
     character: { name: '', avatar: '' },
-    needs: { hunger: 100, thirst: 100, hygiene: 100, toilet: 100 }
+    needs: { hunger: 100, thirst: 100, hygiene: 100, toilet: 100 },
+    health: 100
   };
   window.localPlayerData = localPlayerData;
 
   window.restorePlayerData = function(payloadJson) {
     try {
       var cloudData = typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson;
+      if (cloudData && cloudData.health !== undefined) {
+        localPlayerData.health = cloudData.health;
+      }
       if (cloudData && cloudData.gold !== undefined) {
         localPlayerData.gold = cloudData.gold;
       }
@@ -244,7 +256,8 @@
     return { tx: Math.round(cart.cx), ty: Math.round(cart.cy) };
   }
 
-  function getPath(scene, x0, y0, x1, y1) {
+  function getPath(scene, x0, y0, x1, y1, range) {
+    range = range || 0;
     var openSet = [{ x: x0, y: y0, g: 0, f: 0, parent: null }];
     var closedSet = {};
     var maxSteps = 5000;
@@ -257,7 +270,7 @@
       var current = openSet.shift();
       var key = makeKey(current.x, current.y);
       
-      if (current.x === x1 && current.y === y1) {
+      if (Math.abs(current.x - x1) + Math.abs(current.y - y1) <= range) {
         var path = [];
         var curr = current;
         while(curr) { path.unshift({x: curr.x, y: curr.y}); curr = curr.parent; }
@@ -273,7 +286,12 @@
       for (var i = 0; i < neighbors.length; i++) {
         var n = neighbors[i];
         if (n.x < 0 || n.x >= GRID || n.y < 0 || n.y >= GRID) continue;
-        if (scene._occupied[makeKey(n.x, n.y)] && (n.x !== x1 || n.y !== y1)) continue;
+        if (scene._barriers && scene._barriers[makeKey(n.x, n.y)]) continue; // fence = absolute barrier
+        if (scene._occupied[makeKey(n.x, n.y)]) {
+          var nDist = Math.abs(n.x - x1) + Math.abs(n.y - y1);
+          // Block occupied tiles unless they are within harvest range of target
+          if (nDist > range) continue;
+        }
         if (closedSet[makeKey(n.x, n.y)]) continue;
         
         var tentativeG = current.g + 1;
@@ -596,7 +614,9 @@
       var oy = H / 2 - gPH / 2;
       scene._ox = ox; scene._oy = oy;
       scene._occupied = {};
+      scene._barriers = {}; // fence-only absolute barriers
       scene._buildings = [];
+      var npcSprites = [];
 
       /* load persistent buildings */
       var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
@@ -608,10 +628,22 @@
         var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.12);
         for(var row=0; row<config.h; row++){
           for(var col=0; col<config.w; col++){
-            scene._occupied[(b.tx+col)+','+(b.ty+row)] = true;
+          scene._occupied[(b.tx+col)+','+(b.ty+row)] = true;
+            if (b.type === 'fence') {
+              scene._barriers[(b.tx+col)+','+(b.ty+row)] = true;
+            }
           }
         }
-        scene._buildings.push({sprite: bSprite, tx: b.tx, ty: b.ty, w: config.w, h: config.h});
+        scene._buildings.push({sprite: bSprite, tx: b.tx, ty: b.ty, w: config.w, h: config.h, type: b.type});
+        
+        // Spawn farmer for existing cow_farm
+        if (b.type === 'cow_farm') {
+          var n = scene.add.sprite(pos.x, pos.y + 10, 'player').setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.25);
+          n._tileX = b.tx; n._tileY = b.ty;
+          n._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
+          npcSprites.push(n);
+          scheduleNPCMove(scene, n, ox, oy);
+        }
       });
 
       /* place grass tiles using decoupled logical grid */
@@ -679,7 +711,7 @@
 
       /* ESC to return */
       /* spawn NPCs */
-      var npcSprites = [];
+      // spawn workers
       for(var i=0; i<5; i++) {
         var tx = Phaser.Math.Between(0, GRID - 1);
         var ty = Phaser.Math.Between(0, GRID - 1);
@@ -688,6 +720,7 @@
           var s = scene.add.sprite(pos.x, pos.y, 'player').setOrigin(0.5, 0.8).setDepth(tx + ty + 1).setScale(0.25);
           s.setTint(0xAAAAAA);
           s._tileX = tx; s._tileY = ty;
+          s._needs = { hunger: Phaser.Math.Between(10, 100), thirst: Phaser.Math.Between(10, 100) };
           npcSprites.push(s);
           scheduleNPCMove(scene, s, ox, oy);
         }
@@ -725,9 +758,27 @@
           var tile = worldToTile(wp.x, wp.y, ox, oy);
           updateGhostBuildingPos(scene, tile.tx, tile.ty, ox, oy);
         }
+        if (editMode && editGhost) {
+          var wp2 = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
+          var tile2 = worldToTile(wp2.x, wp2.y, ox, oy);
+          updateEditGhost(scene, tile2.tx, tile2.ty, ox, oy);
+        }
       });
       scene.input.on('pointerdown', function (ptr) {
         if (scene.input.pointer1.isDown && scene.input.pointer2.isDown) return;
+
+        // If in edit/drag mode, confirm placement on tap
+        if (editMode && editGhost) {
+          var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
+          var tile = worldToTile(wp.x, wp.y, ox, oy);
+          updateEditGhost(scene, tile.tx, tile.ty, ox, oy);
+          if (editGhost._validPlacement) {
+            confirmReposition(scene, tile.tx, tile.ty, ox, oy);
+          } else {
+            cancelReposition(scene);
+          }
+          return;
+        }
 
         if (currentBuildMode && ghostBuilding) {
           // Tap sets the position and locks it, showing UI
@@ -739,7 +790,25 @@
           return;
         }
 
-        if (isMenuOpen) { closeContextualMenu(scene); }
+        if (isMenuOpen) {
+          closeContextualMenu(scene);
+          return; // don't re-open on same tap
+        }
+
+        // Long-press detection for building drag-and-drop
+        longPressPtr = ptr;
+        longPressTimer = scene.time.delayedCall(500, function() {
+          if (!longPressPtr) return;
+          var wp = scene.cameras.main.getWorldPoint(longPressPtr.x, longPressPtr.y);
+          var tile = worldToTile(wp.x, wp.y, ox, oy);
+          for (var bi = 0; bi < scene._buildings.length; bi++) {
+            var b = scene._buildings[bi];
+            if (tile.tx >= b.tx && tile.tx < b.tx + b.w && tile.ty >= b.ty && tile.ty < b.ty + b.h) {
+              enterEditMode(scene, b, ox, oy);
+              return;
+            }
+          }
+        });
 
         var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
         var tile = worldToTile(wp.x, wp.y, ox, oy);
@@ -747,7 +816,9 @@
         var clickedRes = null;
         for (var i = 0; i < resourceSprites.length; i++) {
           var res = resourceSprites[i];
-          if (res.tileX === tile.tx && res.tileY === tile.ty) {
+          var rx = (res.sprite && res.sprite._tileX !== undefined) ? res.sprite._tileX : res.tileX;
+          var ry = (res.sprite && res.sprite._tileY !== undefined) ? res.sprite._tileY : res.tileY;
+          if (tile.tx >= rx && tile.tx < rx + 4 && tile.ty >= ry && tile.ty < ry + 4) {
             clickedRes = res;
             break;
           }
@@ -779,20 +850,133 @@
         }
 
         if (clickedRes) {
-          createContextualMenu(scene, clickedRes);
+          if (isMoving) return;
+          var pTile = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
+          
+          var targetTx = tile.tx;
+          var targetTy = tile.ty;
+          if (clickedRes.isBuilding && clickedRes.buildingData) {
+            targetTx = clickedRes.buildingData.tx + Math.floor(clickedRes.buildingData.w / 2);
+            targetTy = clickedRes.buildingData.ty + Math.floor(clickedRes.buildingData.h / 2);
+          } else {
+            var rx = (clickedRes.sprite && clickedRes.sprite._tileX !== undefined) ? clickedRes.sprite._tileX : clickedRes.tileX;
+            var ry = (clickedRes.sprite && clickedRes.sprite._tileY !== undefined) ? clickedRes.sprite._tileY : clickedRes.tileY;
+            targetTx = rx + 1;
+            targetTy = ry + 1;
+          }
+
+          var dist = Math.abs(pTile.tx - targetTx) + Math.abs(pTile.ty - targetTy);
+          if (dist <= 5) {
+            createContextualMenu(scene, clickedRes);
+          } else {
+            movePlayerToTile(scene, targetTx, targetTy, ox, oy, 4, function(success) {
+              if (success) {
+                createContextualMenu(scene, clickedRes);
+              }
+            });
+          }
           return;
         }
 
         handleSingleTap(scene, ptr, ox, oy);
       });
 
+      // Cancel long-press if finger lifts quickly (it was a tap, not a hold)
+      scene.input.on('pointerup', function(ptr) {
+        if (longPressTimer) { longPressTimer.remove(false); longPressTimer = null; }
+        longPressPtr = null;
+      });
+
+      function updateNeedsBubble(scene, sprite, needsData) {
+        if (!sprite || !sprite.active) return;
+        var emoji = '';
+        if (needsData.hunger < 30) emoji = '🍖';
+        else if (needsData.thirst < 30) emoji = '💧';
+        else if (needsData.hygiene < 30) emoji = '🧼';
+        else if (needsData.toilet < 30) emoji = '🚽';
+
+        if (emoji !== '') {
+          if (!sprite._bubble) {
+            sprite._bubble = scene.add.text(sprite.x, sprite.y - 60, emoji, { fontSize: '24px' }).setOrigin(0.5).setDepth(2000);
+          } else {
+            sprite._bubble.setText(emoji);
+            sprite._bubble.setPosition(sprite.x, sprite.y - 60);
+          }
+        } else {
+          if (sprite._bubble) {
+            sprite._bubble.destroy();
+            sprite._bubble = null;
+          }
+        }
+      }
+
+      function showDeathOverlay() {
+        if (window.__isDead) return;
+        window.__isDead = true;
+        var cx = scene.cameras.main.scrollX + scene.cameras.main.width / 2;
+        var cy = scene.cameras.main.scrollY + scene.cameras.main.height / 2;
+        
+        var bg = scene.add.graphics().setDepth(5000);
+        bg.fillStyle(0x000000, 0.8);
+        bg.fillRect(scene.cameras.main.scrollX, scene.cameras.main.scrollY, scene.cameras.main.width, scene.cameras.main.height);
+
+        var txt = scene.add.text(cx, cy - 50, 'You have perished from exhaustion.', { fontFamily: 'monospace', fontSize: '24px', color: '#ff4444' }).setOrigin(0.5).setDepth(5001);
+        
+        var btn = scene.add.text(cx, cy + 30, '[ RESPAWN ]', { fontFamily: 'monospace', fontSize: '28px', color: '#44ff44', backgroundColor: '#222', padding: { x: 10, y: 5 } }).setOrigin(0.5).setDepth(5001).setInteractive();
+        btn.on('pointerdown', function() {
+          window.__isDead = false;
+          localPlayerData.health = 100;
+          localPlayerData.needs.hunger = 100;
+          localPlayerData.needs.thirst = 100;
+          bg.destroy(); txt.destroy(); btn.destroy();
+          refreshHud(scene);
+        });
+      }
+
+      scene.events.on('update', function() {
+         if (playerSprite && playerSprite._bubble) {
+             playerSprite._bubble.setPosition(playerSprite.x, playerSprite.y - 60);
+         }
+         npcSprites.forEach(function(npc) {
+             if (npc && npc._bubble) {
+                 npc._bubble.setPosition(npc.x, npc.y - 60);
+             }
+         });
+      });
+
       scene.time.addEvent({
         delay: 3000,
         callback: function() {
+          if (window.__isDead) return;
           localPlayerData.needs.hunger = Math.max(0, localPlayerData.needs.hunger - 1);
           localPlayerData.needs.thirst = Math.max(0, localPlayerData.needs.thirst - 1);
           localPlayerData.needs.hygiene = Math.max(0, localPlayerData.needs.hygiene - 1);
           localPlayerData.needs.toilet = Math.max(0, localPlayerData.needs.toilet - 1);
+          
+          if (localPlayerData.needs.hunger === 0 || localPlayerData.needs.thirst === 0) {
+             localPlayerData.health = Math.max(0, localPlayerData.health - 5);
+             if (localPlayerData.health === 0) {
+                showDeathOverlay();
+             }
+          }
+
+          updateNeedsBubble(scene, playerSprite, localPlayerData.needs);
+
+          npcSprites.forEach(function(npc) {
+            if (npc._needs) {
+              npc._needs.hunger = Math.max(0, npc._needs.hunger - 1);
+              npc._needs.thirst = Math.max(0, npc._needs.thirst - 1);
+              updateNeedsBubble(scene, npc, npc._needs);
+            }
+          });
+
+          // Cow Farm Production Calculation
+          var cowFarmCount = scene._buildings.filter(function(b) { return b.type === 'cow_farm'; }).length;
+          if (cowFarmCount > 0) {
+            localPlayerData.inventory.meat = (localPlayerData.inventory.meat || 0) + (1 * cowFarmCount);
+            localPlayerData.inventory.milk = (localPlayerData.inventory.milk || 0) + (3 * cowFarmCount);
+          }
+
           refreshHud(scene);
         },
         loop: true
@@ -964,11 +1148,23 @@
       
       taskProgress[type] = (taskProgress[type] || 0) + 1;
       
+      // Mark fence tiles as hard barriers
+      if (type === 'fence') {
+        for (var fr = 0; fr < config.h; fr++) {
+          for (var fc = 0; fc < config.w; fc++) {
+            scene._barriers[(tile.tx + fc) + ',' + (tile.ty + fr)] = true;
+          }
+        }
+      }
+      
       var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
       savedBuildings.push({ type: type, tx: tile.tx, ty: tile.ty });
       localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
 
       playHarvestEffect(scene, pos.x, pos.y, 'spark');
+
+      // Trigger Firestore sync via Flutter hud_update
+      refreshHud(scene);
 
       // === Passive income for Mine and Farm ===
       if (type === 'mine') {
@@ -998,6 +1194,14 @@
             refreshHud(scene);
           }
         });
+      }
+
+      if (type === 'cow_farm') {
+        var n = scene.add.sprite(bSprite.x, bSprite.y + 10, 'player').setOrigin(0.5, 0.8).setDepth(tile.tx + tile.ty + 2).setScale(0.25);
+        n._tileX = tile.tx; n._tileY = tile.ty;
+        n._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
+        npcSprites.push(n);
+        scheduleNPCMove(scene, n, ox, oy);
       }
 
       var buildStr = window.gameLanguage === 'si' ? '\u2714 ගොඩනැගුවා!' : '\u2714 Built!';
@@ -1064,17 +1268,21 @@
             spr = scene.add.sprite(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
             if (scene.anims && scene.anims.exists('cow-walk')) spr.play('cow-walk', true);
             spr.setScale(0.25);
+            spr._tileX = tx; spr._tileY = ty;
+            spr._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
+            npcSprites.push(spr);
+            scheduleNPCMove(scene, spr, ox, oy);
           } else {
             spr = scene.add.image(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
-            spr.setScale(cfg.type === 'tree' ? 0.07 : 0.06);
-          }
-          resourceSprites.push({ type: cfg.type, sprite: spr, shadow: shad, tileX: tx, tileY: ty });
+            spr.setScale(cfg.type === 'tree' ? 0.25 : 0.06);
+            resourceSprites.push({ type: cfg.type, sprite: spr, shadow: shad, tileX: tx, tileY: ty });
 
-          scene.tweens.add({
-            targets: spr, y: pos.y - 4,
-            duration: 1200 + Math.random() * 800,
-            yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-          });
+            scene.tweens.add({
+              targets: spr, y: pos.y - 4,
+              duration: 1200 + Math.random() * 800,
+              yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+            });
+          }
         }
       });
     }
@@ -1123,7 +1331,7 @@
 
           var spr = scene.add.image(pos.x, pos.y, 'tree')
             .setOrigin(0.5, 0.8).setDepth((c+2) + (r+2) + 1)
-            .setScale(0.06 + Math.random() * 0.03)
+            .setScale(0.22 + Math.random() * 0.06)
             .setTint(0x2e5c20);
 
           scene.tweens.add({
@@ -1324,10 +1532,18 @@
       movePlayerToTile(scene, tile.tx, tile.ty, ox, oy);
     }
 
-    function movePlayerToTile(scene, tx, ty, ox, oy) {
+    function movePlayerToTile(scene, tx, ty, ox, oy, range, onComplete) {
+      if (typeof range === 'function') {
+        onComplete = range;
+        range = 0;
+      }
       var cur = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
-      var path = getPath(scene, cur.tx, cur.ty, tx, ty);
-      if (path.length <= 1) return;
+      var path = getPath(scene, cur.tx, cur.ty, tx, ty, range);
+      if (path.length <= 1) {
+        isMoving = false; // ensure guard is clear
+        if (onComplete) onComplete(path.length === 1); // success=true if already there
+        return;
+      }
 
       isMoving = true;
       var idx = 1; /* skip start */
@@ -1339,6 +1555,7 @@
             playerSprite.stop();
           }
           refreshHud(scene);
+          if (onComplete) onComplete(true);
           return;
         }
         var t = path[idx];
@@ -1353,6 +1570,8 @@
         else if (t.x < prev.x) playerSprite.setFlipX(true);
 
         playerSprite.setDepth(t.x + t.y + 1);
+        playerSprite._tileX = t.x; // update per-step for accurate proximity
+        playerSprite._tileY = t.y;
         if (scene._playerShadow) {
           scene._playerShadow.setPosition(pos.x, pos.y);
           scene._playerShadow.setDepth(t.x + t.y + 0.1);
@@ -1367,10 +1586,6 @@
         });
       }
       nextStep();
-
-      /* update player tile for proximity checks */
-      playerSprite._tileX = tx;
-      playerSprite._tileY = ty;
     }
 
     function scheduleNPCMove(scene, npc, ox, oy) {
@@ -1400,8 +1615,10 @@
           if (t.x > npc._tileX) npc.setFlipX(false);
           else if (t.x < npc._tileX) npc.setFlipX(true);
           
-          if (scene.anims && scene.anims.exists('walk-down')) {
-            npc.play('walk-down', true);
+          if (npc.texture.key === 'deer') {
+            if (scene.anims && scene.anims.exists('cow-walk')) npc.play('cow-walk', true);
+          } else {
+            if (scene.anims && scene.anims.exists('walk-down')) npc.play('walk-down', true);
           }
 
           npc._tileX = t.x;
@@ -1430,7 +1647,7 @@
       closeContextualMenu(scene);
       
       var cx = res.sprite.x;
-      var cy = res.sprite.y - 40;
+      var cy = res.sprite.y - 140;
       var elems = [];
       
       function addNeedsButton(s, px, py, elArr, label, callback, width) {
@@ -1477,8 +1694,8 @@
       banner.strokePath();
       elems.push(banner);
 
-      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest', house: 'House', farm: 'Farm', workers_hut: 'Workers Hut', temple: 'Temple', boat_house: 'Boat House', mine: 'Mine' };
-      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව', house: 'නිවස', farm: 'ගොවිපල', workers_hut: 'කම්කරු නිවස', temple: 'පන්සල', boat_house: 'බෝට්ටු නිවස', mine: 'පතල' };
+      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest', house: 'House', farm: 'Farm', workers_hut: 'Workers Hut', temple: 'Temple', boat_house: 'Boat House', cow_farm: 'Cow Farmer Hut', mine: 'Mine' };
+      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව', house: 'නිවස', farm: 'ගොවිපල', workers_hut: 'කම්කරු නිවස', temple: 'පන්සල', boat_house: 'බෝට්ටු නිවස', cow_farm: 'එළදෙනුන් ගොවිපල', mine: 'පතල' };
       var taskMap = { tree: 'wood', deer: 'hunting', gem_rock: 'gem', lake: 'fish', fence: 'fence' };
       var taskKey = taskMap[res.type];
       var cfg = TASKS_CONFIG[taskKey];
@@ -1715,10 +1932,11 @@
       var cx = bData.sprite.x;
       var cy = bData.sprite.y;
 
-      // Clear occupied
+      // Clear occupied & barrier cells
       for(var r=0; r<bData.h; r++){
         for(var c=0; c<bData.w; c++){
           delete scene._occupied[(bData.tx+c)+','+(bData.ty+r)];
+          delete scene._barriers[(bData.tx+c)+','+(bData.ty+r)];
         }
       }
 
@@ -1744,10 +1962,121 @@
       bData.sprite.destroy();
       playHarvestEffect(scene, cx, cy, 'leaf');
       
-      var rmStr = window.gameLanguage === 'si' ? '-1 වැටක්' : '-1 Fence';
+      var rmStr = bData.type === 'fence'
+        ? (window.gameLanguage === 'si' ? '-1 වැටක්' : '-1 Fence')
+        : (window.gameLanguage === 'si' ? '✓ ඉවත් කෙරුණා' : '✓ Removed');
       floatText(scene, rmStr, cx, cy - 50, '#FF6B6B');
 
       refreshHud(scene);
+    }
+
+    /* ──────────────────────────────────────────────
+       DRAG-AND-DROP BUILDING REPOSITION SYSTEM
+       ────────────────────────────────────────────── */
+    function enterEditMode(scene, buildingData, ox, oy) {
+      if (isMoving) return;
+      editMode = buildingData;
+      editOrigTx = buildingData.tx;
+      editOrigTy = buildingData.ty;
+
+      var config = BUILDINGS_CONFIG[buildingData.type];
+      if (!config) return;
+
+      // Lift the sprite visually
+      scene.tweens.add({ targets: buildingData.sprite, scaleY: 0.14, y: buildingData.sprite.y - 10, duration: 200, ease: 'Back.Out' });
+
+      // Create ghost outline
+      editGhost = scene.add.image(buildingData.sprite.x, buildingData.sprite.y, config.texture)
+        .setOrigin(0.5, 0.8).setDepth(9999).setScale(0.12).setAlpha(0.6).setTint(0x00FF00);
+      editGhost._validPlacement = true;
+      editGhost._tw = config.w;
+      editGhost._th = config.h;
+
+      // Show instruction
+      floatText(scene, window.gameLanguage === 'si' ? '📍 ස්ථානය ගෙනයන්න' : '📍 Drag to reposition', buildingData.sprite.x, buildingData.sprite.y - 60, '#FFD700');
+    }
+
+    function updateEditGhost(scene, tx, ty, ox, oy) {
+      if (!editGhost) return;
+      var config = BUILDINGS_CONFIG[editMode.type];
+      var pos = tileToWorld(tx, ty, ox, oy);
+      editGhost.setPosition(pos.x, pos.y);
+      editGhost._curTx = tx;
+      editGhost._curTy = ty;
+
+      // Check validity (not occupied by others, within grid)
+      var valid = true;
+      for (var r = 0; r < config.h && valid; r++) {
+        for (var c = 0; c < config.w && valid; c++) {
+          var key = (tx + c) + ',' + (ty + r);
+          if (tx + c < 0 || tx + c >= GRID || ty + r < 0 || ty + r >= GRID) { valid = false; break; }
+          // occupied by another building (not ourselves)
+          if (scene._occupied[key]) {
+            var isSelf = (tx + c >= editOrigTx && tx + c < editOrigTx + config.w &&
+                          ty + r >= editOrigTy && ty + r < editOrigTy + config.h);
+            if (!isSelf) { valid = false; break; }
+          }
+        }
+      }
+      editGhost._validPlacement = valid;
+      editGhost.setTint(valid ? 0x00FF00 : 0xFF0000);
+    }
+
+    function confirmReposition(scene, newTx, newTy, ox, oy) {
+      if (!editMode) return;
+      var config = BUILDINGS_CONFIG[editMode.type];
+
+      // Free old cells
+      for (var r = 0; r < editMode.h; r++) {
+        for (var c = 0; c < editMode.w; c++) {
+          delete scene._occupied[(editOrigTx + c) + ',' + (editOrigTy + r)];
+          delete scene._barriers[(editOrigTx + c) + ',' + (editOrigTy + r)];
+        }
+      }
+
+      // Claim new cells
+      for (var r = 0; r < config.h; r++) {
+        for (var c = 0; c < config.w; c++) {
+          scene._occupied[(newTx + c) + ',' + (newTy + r)] = true;
+          if (editMode.type === 'fence') {
+            scene._barriers[(newTx + c) + ',' + (newTy + r)] = true;
+          }
+        }
+      }
+
+      // Move sprite
+      var newPos = tileToWorld(newTx, newTy, ox, oy);
+      editMode.sprite.setPosition(newPos.x, newPos.y);
+      editMode.sprite.setScale(0.12);
+      editMode.tx = newTx;
+      editMode.ty = newTy;
+
+      // Update localStorage
+      var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
+      savedBuildings = savedBuildings.map(function(b) {
+        if (b.type === editMode.type && b.tx === editOrigTx && b.ty === editOrigTy) {
+          return { type: b.type, tx: newTx, ty: newTy };
+        }
+        return b;
+      });
+      localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
+
+      floatText(scene, window.gameLanguage === 'si' ? '✔ ගෙනා ගිය!' : '✔ Moved!', newPos.x, newPos.y - 60, '#4CAF50');
+
+      if (editGhost) { editGhost.destroy(); editGhost = null; }
+      editMode = null;
+      refreshHud(scene); // Triggers Flutter→Firestore sync
+    }
+
+    function cancelReposition(scene) {
+      if (!editMode) return;
+      // Reset sprite back to normal
+      editMode.sprite.setScale(0.12);
+      var origPos = tileToWorld(editOrigTx, editOrigTy, scene._ox, scene._oy);
+      editMode.sprite.setPosition(origPos.x, origPos.y);
+      if (editGhost) { editGhost.destroy(); editGhost = null; }
+      editMode = null;
+      floatText(scene, window.gameLanguage === 'si' ? '✗ අවලංගුයි' : '✗ Cancelled', origPos.x, origPos.y - 50, '#FF6B6B');
     }
 
     function clearBorderTree(scene, res, cost) {
@@ -2029,13 +2358,20 @@
        HUD REFRESH (Bridge to Flutter)
        ────────────────────────────────────────────── */
     function refreshHud(scene) {
+      var cowFarmCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'cow_farm'; }).length : 0;
+      
       // Forward resource updates to Flutter instead of drawing text
       window.notifyFlutter({
         type: 'hud_update',
         tasks: taskProgress,
         config: TASKS_CONFIG,
         gold: localPlayerData.gold,
-        needs: localPlayerData.needs
+        needs: localPlayerData.needs,
+        health: localPlayerData.health,
+        meat: localPlayerData.inventory.meat || 0,
+        milk: localPlayerData.inventory.milk || 0,
+        meatRate: cowFarmCount * 1200, // 1 per 3s = 1200/hr
+        milkRate: cowFarmCount * 3600  // 3 per 3s = 3600/hr
       });
       checkEraCompletion(scene);
     }

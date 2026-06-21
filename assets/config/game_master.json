@@ -74,6 +74,7 @@
     "temple":      { "w": 12, "h": 12, "texture": "temple",      "costs": { "gold": 300, "wood": 20, "gem": 5 }, "name": "Temple", "icon": "🏛️" },
     "lake":        { "w": 16, "h": 16, "texture": "lake",        "costs": { "gold": 50, "wood": 5 }, "name": "Lake", "icon": "🌊" },
     "boat_house":  { "w": 8, "h": 8, "texture": "boat_house",  "costs": { "gold": 120, "wood": 15 }, "name": "Boat House", "icon": "⛵" },
+    "cow_farm":    { "w": 8, "h": 8, "texture": "cow_farm",    "costs": { "gold": 150, "wood": 20 }, "name": "Cow Farmer Hut", "icon": "🐄" },
     "fence":       { "w": 4, "h": 4, "texture": "fence",       "costs": { "wood": 2 }, "name": "Fence", "icon": "🚧" }
   },
   "troops": [

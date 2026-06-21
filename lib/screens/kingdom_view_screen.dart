@@ -111,6 +111,11 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         case 'Thirst': return 'පිපාසය';
         case 'Hygiene': return 'පිරිසිදුකම';
         case 'Toilet': return 'වැසිකිළිය';
+        case 'Health': return 'සෞඛ්‍යය';
+        case 'Fence': return 'වැට';
+        case 'Meat': return 'මස්';
+        case 'Milk': return 'කිරි';
+        case 'Cow Farm': return 'එළදෙනුන් ගොවිපල';
       }
     }
     return key;
@@ -453,6 +458,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 children: [
                   _buildMenuCard(_translate('House'), 'house', Icons.home, 50, 5, 0),
                   _buildMenuCard(_translate('Farm'), 'farm', Icons.agriculture, 100, 10, 0),
+                  _buildMenuCard(_translate('Cow Farm'), 'cow_farm', Icons.pets, 150, 20, 0),
                   _buildMenuCard(_translate('Mine'), 'mine', Icons.construction, 150, 5, 5),
                   _buildMenuCard(_translate('Workers'), 'workers_hut', Icons.people, 80, 10, 0),
                   _buildMenuCard(_translate('Temple'), 'temple', Icons.account_balance, 300, 20, 5),
@@ -675,6 +681,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           _buildResourceTaskItem('💎', _translate('Gems'), 'gem', tasks, config),
           _buildDivider(),
           _buildResourceTaskItem('🏹', _translate('Food'), 'hunting', tasks, config),
+          _buildDivider(),
+          _buildResourceItem('🥩', _translate('Meat'), _hudData?['meat'] ?? 0, rate: _hudData?['meatRate']),
+          _buildDivider(),
+          _buildResourceItem('🥛', _translate('Milk'), _hudData?['milk'] ?? 0, rate: _hudData?['milkRate']),
         ],
       ),
     );
@@ -714,6 +724,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
 
   Widget _buildNeedsBar() {
     final needs = _hudData?['needs'] ?? {'hunger': 100, 'thirst': 100, 'hygiene': 100, 'toilet': 100};
+    final health = _hudData?['health'] ?? 100;
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
@@ -724,6 +735,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _buildNeedItem('❤️', _translate('Health'), (health).toInt(), Colors.red),
+          _buildDivider(),
           _buildNeedItem('🍔', _translate('Hunger'), (needs['hunger'] ?? 100).toInt(), Colors.orange),
           _buildDivider(),
           _buildNeedItem('💧', _translate('Thirst'), (needs['thirst'] ?? 100).toInt(), Colors.blue),
@@ -760,17 +773,27 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     );
   }
 
-  Widget _buildResourceItem(String icon, String name, int amount) {
+  Widget _buildResourceItem(String icon, String name, int amount, {int? rate}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(icon, style: const TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          Text(
-            amount.toString(),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+          Row(
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 4),
+              Text(
+                amount.toString(),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+            ],
           ),
+          if (rate != null && rate > 0)
+            Text(
+              '+$rate/hr',
+              style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 8, fontWeight: FontWeight.bold),
+            ),
         ],
       ),
     );
