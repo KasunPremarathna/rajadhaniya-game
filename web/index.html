@@ -120,7 +120,9 @@
     window.addEventListener('load', function() {
       _flutter.loader.load({
         onEntrypointLoaded: async function(engineInitializer) {
-          const appRunner = await engineInitializer.initializeEngine();
+          const appRunner = await engineInitializer.initializeEngine({
+            renderer: 'html'
+          });
           
           clearInterval(splashInterval);
           document.getElementById('splash-fill').style.animation = 'none';
