@@ -152,6 +152,12 @@ When you modify `web/game_bridge.js` or any Phaser-related file, update this sec
 
 ### Change Log
 
+**2026-06-21**: UI Scaling, Layout Fixes & Firestore Security.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.17`.
+- **HUD Scaling**: Drastically scaled down the Flutter UI components (Player Profile, Resource/Task Bars, Sena Kanda Barracks, and Build Menu) within `KingdomViewScreen` and `SenaKandaScreen` to increase gameplay visibility on smaller landscape screens.
+- **RenderFlex Fix**: Wrapped the update dialog in `UpdateScreen` with a `FittedBox` to prevent `RenderFlex` overflow errors on landscape devices during the version mismatch flow.
+- **Building Sprite Scaling**: Applied a strict `.setScale(0.12)` in Phaser's `game_bridge.js` to `ghostBuilding` (during drag-and-drop placement), actively constructing buildings, and restored localStorage buildings to ensure they render at a suitable medium size on the isometric grid.
+- **Firestore Security**: Deployed robust schema validation rules to `firestore.rules`. Enforced that only whitelisted keys (`gold`, `tasks`, `era_id`, `era_name`) can be injected into the user's `game_data` payload, and strictly enforced data types (e.g., `gold` must be a number) to prevent malicious database bloat and payload injection.
 **2026-06-21**: Android Native WebView Integration & Unified Codebase.
 - **Dependencies**: Added `webview_flutter` plugin to `pubspec.yaml` to allow the Android application to render the WebGL Phaser game natively.
 - **Game Hosting**: Created a standalone `web/game.html` file that strips out the Flutter Engine and only loads the Phaser logic and `game_bridge.js`. Deployed this to Firebase Hosting.

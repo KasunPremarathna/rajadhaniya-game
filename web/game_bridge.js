@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.16';
+  var GAME_ASSET_VERSION = 'v1.3.17';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -195,7 +195,7 @@
       if (ghostBuilding) ghostBuilding.destroy();
       currentBuildMode = type;
       var config = BUILDINGS_CONFIG[type];
-      ghostBuilding = scene.add.image(0, 0, config.texture).setAlpha(0.6).setDepth(1000).setOrigin(0.5, 0.8);
+      ghostBuilding = scene.add.image(0, 0, config.texture).setAlpha(0.6).setDepth(1000).setOrigin(0.5, 0.8).setScale(0.12);
       ghostBuilding._config = config;
       ghostBuilding._type = type;
     }
@@ -580,7 +580,7 @@
         if (!config) return;
         var pos = tileToWorld(b.tx, b.ty, ox, oy);
         var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(b.tx + b.ty + 0.1);
-        var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2);
+        var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.12);
         for(var row=0; row<config.h; row++){
           for(var col=0; col<config.w; col++){
             scene._occupied[(b.tx+col)+','+(b.ty+row)] = true;
@@ -877,7 +877,7 @@
 
       var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(tile.tx + tile.ty + 0.1);
       var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(tile.tx + tile.ty + 2);
-      bSprite.setScale(0.18); // Scale AI assets
+      bSprite.setScale(0.12); // Scale AI assets
       bSprite.setTint(0x777777); // Grey out during construction
 
       var duration = 5000; // 5 seconds build time
