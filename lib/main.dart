@@ -14,10 +14,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
+import 'config/game_config.dart';
 import 'package:flutter/foundation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await GameConfig.instance.loadConfig();
+  
   if (Firebase.apps.isEmpty) {
     if (kIsWeb) {
       await Firebase.initializeApp(

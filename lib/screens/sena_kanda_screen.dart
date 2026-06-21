@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/troop.dart';
+import '../config/game_config.dart';
 
 class SenaKandaScreen extends StatefulWidget {
   final Function(String) translate;
@@ -10,8 +11,14 @@ class SenaKandaScreen extends StatefulWidget {
 }
 
 class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProviderStateMixin {
-  final int housingSpaceLimit = 50;
+  late final int housingSpaceLimit;
   Map<String, int> trainingQueue = {}; // troop id -> count
+
+  @override
+  void initState() {
+    super.initState();
+    housingSpaceLimit = GameConfig.instance.global['housingSpaceLimit'] ?? 50;
+  }
 
   int get currentHousingSpace {
     int space = 0;

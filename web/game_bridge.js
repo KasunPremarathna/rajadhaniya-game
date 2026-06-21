@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.17';
+  var GAME_ASSET_VERSION = 'v1.3.19';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -64,6 +64,7 @@
   var currentBuildMode = null;
   var ghostBuilding = null;
   var buildConfirmElements = null;
+  var GLOBAL_CONFIG = { treeClearCost: 100 };
 
   var localPlayerData = {
     eraId: '', eraName: '', eraBonus: '', lat: 0, lng: 0,
@@ -109,8 +110,21 @@
   /* ════════════════════════════════════════════════════════
      Flutter Bridge API
      ════════════════════════════════════════════════════════ */
-  window.initGameGrid = function (eId, eName, eBonus, eLat, eLng, lang) {
+  window.initGameGrid = function (eId, eName, eBonus, eLat, eLng, lang, configJson) {
     window.gameLanguage = lang || 'en';
+    if (configJson) {
+      try {
+        var parsedConfig = JSON.parse(configJson);
+        if (parsedConfig.buildings) {
+          BUILDINGS_CONFIG = parsedConfig.buildings;
+        }
+        if (parsedConfig.global) {
+          GLOBAL_CONFIG = parsedConfig.global;
+        }
+      } catch (e) {
+        console.error('[Bridge] Failed to parse configJson:', e);
+      }
+    }
     console.log('[Bridge] initGameGrid era=' + eId + ' lat=' + eLat + ' lng=' + eLng + ' lang=' + lang);
     pendingEraId = eId;
     pendingLat = eLat;
@@ -1044,11 +1058,35 @@
 
     /* ─── Border Forest (CoC style dense tree ring) ─── */
     function placeBorderForest(scene, ox, oy) {
+      var clearedBorders = JSON.parse(localStorage.getItem('rajadhaniya_cleared_borders') || '[]');
+      
       for (var r = 0; r < GRID; r+=4) {
         for (var c = 0; c < GRID; c+=4) {
           var isBorder = (r < BORDER || r >= GRID - BORDER || c < BORDER || c >= GRID - BORDER);
           if (!isBorder) continue;
           
+          var isCleared = clearedBorders.some(function(cb) { return cb.tx === c && cb.ty === r; });
+          if (isCleared) {
+            revealedTiles[c + ',' + r] = true;
+            
+            // clear a slightly larger fog area so it perfectly matches the expanded feel
+            for(var dr=-8; dr<=8; dr++) {
+              for(var dc=-8; dc<=8; dc++) {
+                var tx = c + dc;
+                var ty = r + dr;
+                var fogTx = tx - (tx % 4);
+                var fogTy = ty - (ty % 4);
+                var fg = fogSprites[fogTx + ',' + fogTy];
+                if (fg) {
+                  fg.destroy();
+                  delete fogSprites[fogTx + ',' + fogTy];
+                  revealedTiles[fogTx + ',' + fogTy] = true;
+                }
+              }
+            }
+            continue;
+          }
+
           if (Math.random() < 0.25) continue;
 
           for(var rr=0; rr<4; rr++){
@@ -1081,6 +1119,12 @@
       revealedTiles = {};
       for (var r = 0; r < GRID; r+=4) {
         for (var c = 0; c < GRID; c+=4) {
+          var isBorder = (r < BORDER || r >= GRID - BORDER || c < BORDER || c >= GRID - BORDER);
+          if (!isBorder) {
+            revealedTiles[c + ',' + r] = true;
+            continue; // The entire safe zone is revealed by default
+          }
+
           var posObj = cartToIso(c + 1.5, r + 1.5);
           var pos = { x: posObj.x + ox + TILE_W/2, y: posObj.y + oy + TILE_H/2 };
           var fg = scene.add.graphics().setDepth(500);
@@ -1392,8 +1436,8 @@
       banner.strokePath();
       elems.push(banner);
 
-      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence' };
-      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට' };
+      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest' };
+      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව' };
       var taskMap = { tree: 'wood', deer: 'hunting', gem_rock: 'gem', lake: 'fish', fence: 'fence' };
       var taskKey = taskMap[res.type];
       var cfg = TASKS_CONFIG[taskKey];
@@ -1421,7 +1465,22 @@
       // 6. Production Details (Grid Layout)
       var isSi = (window.gameLanguage === 'si');
       
-      if (res.type === 'fence') {
+      if (res.type === 'border_tree') {
+        var cost = GLOBAL_CONFIG.treeClearCost || 100;
+        var qText = isSi ? 'භූමිය පුළුල් කරන්නද?' : 'Expand Territory?';
+        var costText = isSi ? `මිල: ${cost} 🪙` : `Cost: ${cost} 🪙`;
+
+        var qLabel = scene.add.text(cx, cy - 35, qText, {
+          fontFamily: 'monospace', fontSize: '15px', color: '#CCCCCC', align: 'center'
+        }).setOrigin(0.5).setDepth(201);
+        elems.push(qLabel);
+
+        var cLabel = scene.add.text(cx, cy - 10, costText, {
+          fontFamily: 'monospace', fontSize: '16px', color: '#FFD700', fontStyle: 'bold', align: 'center'
+        }).setOrigin(0.5).setDepth(201);
+        elems.push(cLabel);
+
+      } else if (res.type === 'fence') {
         var yieldLabel = scene.add.text(cx, cy - 20, isSi ? 'අස්වැන්න: +1 🪵' : 'Yield: +1 🪵', {
           fontFamily: 'monospace', fontSize: '15px', color: '#4CAF50', align: 'center'
         }).setOrigin(0.5).setDepth(201);
@@ -1479,6 +1538,30 @@
           if (ptr.event) ptr.event.stopPropagation();
           closeContextualMenu(scene);
           removeBuilding(scene, res.buildingData);
+        });
+        elems.push(zone);
+
+      } else if (res.type === 'border_tree') {
+        var cost = GLOBAL_CONFIG.treeClearCost || 100;
+        var btn = scene.add.graphics().setDepth(201);
+        btn.fillStyle(0x8B4513, 1);
+        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
+        btn.lineStyle(2, 0xD4AF37, 1);
+        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
+        elems.push(btn);
+
+        var clrTxt = isSi ? '\u2694\uFE0F කැලෑව කපන්න' : '\u2694\uFE0F Clear Forest';
+        var txt = scene.add.text(cx, btnY, clrTxt, {
+          fontFamily: 'monospace', fontSize: '15px', color: '#FFF', fontStyle: 'bold'
+        }).setOrigin(0.5).setDepth(202);
+        elems.push(txt);
+
+        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
+        zone.on('pointerdown', function(ptr, localX, localY, ev) {
+          if (ev) ev.stopPropagation();
+          if (ptr.event) ptr.event.stopPropagation();
+          closeContextualMenu(scene);
+          clearBorderTree(scene, res, cost);
         });
         elems.push(zone);
 
@@ -1588,6 +1671,59 @@
       
       var rmStr = window.gameLanguage === 'si' ? '-1 වැටක්' : '-1 Fence';
       floatText(scene, rmStr, cx, cy - 50, '#FF6B6B');
+
+      refreshHud(scene);
+    }
+
+    function clearBorderTree(scene, res, cost) {
+      if (localPlayerData.gold < cost) {
+        var msg = window.gameLanguage === 'si' ? 'රත්‍රන් මදි!' : 'Not enough Gold!';
+        floatText(scene, msg, res.sprite.x, res.sprite.y - 50, '#FF0000');
+        return;
+      }
+      localPlayerData.gold -= cost;
+
+      var cx = res.sprite.x;
+      var cy = res.sprite.y;
+
+      // Free up the 4x4 grid space
+      for(var rr=0; rr<4; rr++){
+        for(var cc=0; cc<4; cc++){
+          delete scene._occupied[(res.tileX+cc) + ',' + (res.tileY+rr)];
+        }
+      }
+
+      // Remove the sprite and play effect
+      res.sprite.destroy();
+      playHarvestEffect(scene, cx, cy, 'spark');
+
+      var floatMsg = window.gameLanguage === 'si' ? 'භූමිය පුළුල් විය!' : 'Territory Expanded!';
+      floatText(scene, floatMsg, cx, cy - 50, '#4CAF50');
+
+      // Clear Fog around this newly opened area
+      // We pass 0 as origin offset because revealFogAround uses the global ox/oy from buildGame scope. 
+      // Actually, wait. revealFogAround takes ox, oy. Let's just use the current offset. 
+      // If we don't have ox, we can calculate it or just pass 0,0 if it's not strictly needed for the fog keys (fog sprites are keyed by c+','+r).
+      // Let's call the global or pass it? It's better to just delete the fog sprites directly here:
+      for(var dr=-8; dr<=8; dr++) {
+        for(var dc=-8; dc<=8; dc++) {
+          var tx = res.tileX + dc;
+          var ty = res.tileY + dr;
+          var fogTx = tx - (tx % 4);
+          var fogTy = ty - (ty % 4);
+          var fg = fogSprites[fogTx + ',' + fogTy];
+          if (fg) {
+            scene.tweens.add({ targets: fg, alpha: 0, duration: 800, onComplete: function() { fg.destroy(); } });
+            delete fogSprites[fogTx + ',' + fogTy];
+            revealedTiles[fogTx + ',' + fogTy] = true;
+          }
+        }
+      }
+
+      // Save to localStorage so it stays cleared on reboot
+      var clearedBorders = JSON.parse(localStorage.getItem('rajadhaniya_cleared_borders') || '[]');
+      clearedBorders.push({ tx: res.tileX, ty: res.tileY });
+      localStorage.setItem('rajadhaniya_cleared_borders', JSON.stringify(clearedBorders));
 
       refreshHud(scene);
     }

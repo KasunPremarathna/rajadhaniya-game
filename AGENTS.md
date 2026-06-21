@@ -152,6 +152,13 @@ When you modify `web/game_bridge.js` or any Phaser-related file, update this sec
 
 ### Change Log
 
+**2026-06-21**: Map Expansion (Fog of War) & Master Config Centralization.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.18`.
+- **Backend Centralization**: Created `assets/config/game_master.json` as the single source of truth for Era configurations, Building costs, Troop stats, and Global settings. Refactored Flutter models (`HistoricalEra.dart`, `Troop.dart`) and Phaser `initGameGrid` to parse and sync data dynamically from this payload.
+- **Territory Expansion**: Implemented Clash of Clans style border expansion. Players can tap the dense `border_tree` ring to open a Contextual Menu and pay 100 Gold (`treeClearCost` from the JSON config) to permanently clear the 4x4 matrix space.
+- **Fog of War Dynamics**: Expanded the fog removal logic to permanently push back the dark fog around newly cleared border trees, simulating territory growth.
+- **Persistent Territory**: Hooked the cleared border tree coordinates into `localStorage` (`rajadhaniya_cleared_borders`) so the map physically expands and remembers its boundaries on every boot.
+
 **2026-06-21**: UI Scaling, Layout Fixes & Firestore Security.
 - **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.17`.
 - **HUD Scaling**: Drastically scaled down the Flutter UI components (Player Profile, Resource/Task Bars, Sena Kanda Barracks, and Build Menu) within `KingdomViewScreen` and `SenaKandaScreen` to increase gameplay visibility on smaller landscape screens.

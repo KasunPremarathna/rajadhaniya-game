@@ -9,6 +9,7 @@ import '../services/firestore_service.dart';
 import 'update_screen.dart';
 import 'sena_kanda_screen.dart';
 import 'login_screen.dart';
+import '../config/game_config.dart';
 
 class KingdomViewScreen extends StatefulWidget {
   final HistoricalEra era;
@@ -71,6 +72,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         0.0,
         0.0,
         _language,
+        GameConfig.instance.toJsonString(),
       );
     });
   }
@@ -101,6 +103,9 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         case 'Do you want to save your progress to the cloud before exiting?': return 'පිටවීමට පෙර ඔබගේ ප්‍රගතිය ක්ලවුඩ් වෙත සුරැකීමට අවශ්‍යද?';
         case 'Cancel': return 'අවලංගු කරන්න';
         case 'Exit Game': return 'පිටවීම';
+        case 'Era Objectives': return 'යුගයේ අරමුණු';
+        case 'Complete all objectives to advance.': return 'ඉදිරියට යාමට සියලු අරමුණු සම්පූර්ණ කරන්න.';
+        case 'ADVANCE TO NEXT ERA': return 'ඊළඟ යුගයට යන්න';
       }
     }
     return key;
@@ -264,6 +269,137 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     );
   }
 
+  void _showEraProgress() {
+    final tasks = _hudData?['tasks'] ?? {};
+    final config = _hudData?['config'] ?? {};
+    const taskKeys = ['house', 'workers_hut', 'temple', 'boat_house', 'lake', 'fish', 'fence'];
+    
+    // Check if fully complete
+    bool isComplete = true;
+    for (final key in taskKeys) {
+      final current = (tasks[key] ?? 0) as num;
+      final required = (config[key]?['req'] ?? 1) as num;
+      if (current < required) {
+        isComplete = false;
+        break;
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.95),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 2),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 16),
+                  Text(
+                    _translate('Era Objectives'),
+                    style: const TextStyle(color: Color(0xFFD4A017), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Tasks List
+                  ...taskKeys.map((key) {
+                    final current = (tasks[key] ?? 0) as num;
+                    final required = (config[key]?['req'] ?? 1) as num;
+                    final isTaskDone = current >= required;
+                    final icon = config[key]?['icon'] ?? '📌';
+                    final nameEn = config[key]?['label'] ?? key;
+                    final nameSi = config[key]?['sinLabel'] ?? nameEn;
+                    final displayName = _language == 'si' ? nameSi : nameEn;
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2C2520),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: isTaskDone ? Colors.green.withValues(alpha: 0.5) : Colors.white12),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(icon, style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              displayName,
+                              style: TextStyle(
+                                color: isTaskDone ? Colors.green : Colors.white,
+                                fontWeight: FontWeight.bold,
+                                decoration: isTaskDone ? TextDecoration.lineThrough : null,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${current.clamp(0, required)} / $required',
+                            style: TextStyle(
+                              color: isTaskDone ? Colors.green : Colors.white54,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (isTaskDone) const Icon(Icons.check_circle, color: Colors.green, size: 16)
+                          else const Icon(Icons.radio_button_unchecked, color: Colors.white54, size: 16),
+                        ],
+                      ),
+                    );
+                  }),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Next Era Button
+                  if (isComplete)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 40,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFADFF2F),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(_translate('Advancing to next Era is not implemented yet!'))),
+                          );
+                        },
+                        child: Text(
+                          _translate('ADVANCE TO NEXT ERA'),
+                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.0),
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      _translate('Complete all objectives to advance.'),
+                      style: const TextStyle(color: Colors.white54, fontStyle: FontStyle.italic, fontSize: 10),
+                    ),
+                  
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showSenaKanda() {
     showModalBottomSheet(
       context: context,
@@ -390,8 +526,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     final overallProgress = taskCount > 0 ? totalProgress / taskCount : 0.0;
     final progressPercent = (overallProgress * 100).toInt();
 
-    return Container(
-      decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: _showEraProgress,
+      child: Container(
+        decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(40),
         border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 1.5),
@@ -500,7 +638,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildResourceBar() {

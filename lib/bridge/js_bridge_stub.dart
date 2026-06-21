@@ -20,8 +20,8 @@ class JsBridge {
     }
   }
 
-  static void callInitGameGrid(String eraId, String eraName, String eraBonus, double lat, double lng, String lang) {
-    webViewController?.runJavaScript("window.initGameGrid('$eraId', '$eraName', '$eraBonus', $lat, $lng, '$lang')");
+  static void callInitGameGrid(String eraId, String eraName, String eraBonus, double lat, double lng, String lang, String configJson) {
+    webViewController?.runJavaScript("window.initGameGrid('$eraId', '$eraName', '$eraBonus', $lat, $lng, '$lang', '${configJson.replaceAll("'", "\\'")}')");
   }
 
   static void showFlutterUi() {
