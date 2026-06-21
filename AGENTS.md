@@ -133,6 +133,7 @@ When all tasks reach 100%:
 - **Flutter Web only**: No mobile-only plugins (`webview_flutter` etc.).
 - **WASM compatible**: Conditional imports (`dart.library.js_interop`) in bridge files and platform registries.
 - **Phaser loading**: `loading_bg` image must exist at `assets/game/images/loadingscreen.png` before `buildGame()` runs.
+- **Character Asset Rule**: All character/NPC sprite sheets must be exactly **1024x256 pixels**, containing exactly **4 frames** (each frame being a perfect **256x256 square**). They are rendered in-game using `.setScale(0.25)` to fit the isometric grid efficiently.
 
 ## Common Gotchas
 - Never use `s.add.image('loading_bg')` in `preload()` — the image hasn't loaded yet. Use a `Graphics` solid background and swap in `create()`.

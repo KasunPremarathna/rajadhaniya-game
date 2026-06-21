@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.19';
+  var GAME_ASSET_VERSION = 'v1.3.20';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -402,25 +402,32 @@
         sg.fillStyle(0x000000, 1); sg.fillEllipse(16, 8, 32, 16);
         sg.generateTexture('shadow', 32, 16); sg.destroy();
 
-        // Load the character sprite sheet
-        s.load.spritesheet('player', 'assets/game/images/sprites/char_prehistoric.png?v=' + GAME_ASSET_VERSION, {
+        /* Load Generated Assets Dynamically Based on Era */
+        var v = '?v=' + GAME_ASSET_VERSION;
+        var eraFolder = 'assets/game/images/sprites/' + eraId + '/';
+        var commonFolder = 'assets/game/images/sprites/';
+
+        s.load.audio('loading_music', 'assets/game/audio/loading_music.mp3' + v);
+        
+        // Common assets (trees, resources, etc.)
+        s.load.image('tree', commonFolder + 'tree.png' + v);
+        s.load.spritesheet('deer', commonFolder + 'cow.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.image('gem_rock', commonFolder + 'gem_rock.png' + v);
+
+        // Era-specific character sprite sheet
+        s.load.spritesheet('player', eraFolder + 'char.png' + v, {
           frameWidth: 352,
           frameHeight: 256
         });
 
-        /* Load Generated Assets */
-        var v = '?v=' + GAME_ASSET_VERSION;
-        s.load.audio('loading_music', 'assets/game/audio/loading_music.mp3' + v);
-        s.load.image('tree', 'assets/game/images/sprites/tree.png' + v);
-        s.load.spritesheet('deer', 'assets/game/images/sprites/cow.png' + v, { frameWidth: 256, frameHeight: 256 });
-        s.load.image('gem_rock', 'assets/game/images/sprites/gem_rock.png' + v);
-        s.load.image('house', 'assets/game/images/sprites/house.png' + v);
-        s.load.image('farm', 'assets/game/images/sprites/farm.png' + v);
-        s.load.image('mine', 'assets/game/images/sprites/mine.png' + v);
-        s.load.image('workers_hut', 'assets/game/images/sprites/workers_hut.png' + v);
-        s.load.image('temple', 'assets/game/images/sprites/temple.png' + v);
-        s.load.image('lake', 'assets/game/images/sprites/lake.png' + v);
-        s.load.image('boat_house', 'assets/game/images/sprites/boat_house.png' + v);
+        // Era-specific buildings
+        s.load.image('house', eraFolder + 'house.png' + v);
+        s.load.image('farm', eraFolder + 'farm.png' + v);
+        s.load.image('mine', eraFolder + 'mine.png' + v);
+        s.load.image('workers_hut', eraFolder + 'workers_hut.png' + v);
+        s.load.image('temple', eraFolder + 'temple.png' + v);
+        s.load.image('lake', eraFolder + 'lake.png' + v);
+        s.load.image('boat_house', eraFolder + 'boat_house.png' + v);
         
         /* fence: procedural texture */
         var fcg = s.add.graphics();
