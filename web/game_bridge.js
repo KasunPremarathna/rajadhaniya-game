@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.20';
+  var GAME_ASSET_VERSION = 'v1.3.21';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -414,11 +414,10 @@
         s.load.spritesheet('deer', commonFolder + 'cow.png' + v, { frameWidth: 256, frameHeight: 256 });
         s.load.image('gem_rock', commonFolder + 'gem_rock.png' + v);
 
-        // Era-specific character sprite sheet
-        s.load.spritesheet('player', eraFolder + 'char.png' + v, {
-          frameWidth: 352,
-          frameHeight: 256
-        });
+        // Era-specific character sprite sheets
+        s.load.spritesheet('player', eraFolder + 'walkingemptyhand.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('player_axe', eraFolder + 'taskwithaex.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('player_pickaxe', eraFolder + 'taskhandonrock.png' + v, { frameWidth: 256, frameHeight: 256 });
 
         // Era-specific buildings
         s.load.image('house', eraFolder + 'house.png' + v);
@@ -461,12 +460,13 @@
 
         // Create animations from the spritesheet frames
         if (s.textures.exists('player')) {
-          s.anims.create({
-            key: 'walk-down',
-            frames: s.anims.generateFrameNumbers('player', { start: 0, end: 3 }),
-            frameRate: 8,
-            repeat: -1
-          });
+          s.anims.create({ key: 'walk-down', frames: s.anims.generateFrameNumbers('player', { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
+        }
+        if (s.textures.exists('player_axe')) {
+          s.anims.create({ key: 'action-axe', frames: s.anims.generateFrameNumbers('player_axe', { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
+        }
+        if (s.textures.exists('player_pickaxe')) {
+          s.anims.create({ key: 'action-pickaxe', frames: s.anims.generateFrameNumbers('player_pickaxe', { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
         }
         if (s.textures.exists('deer')) {
           s.anims.create({
