@@ -11,6 +11,8 @@ class JsBridge {
 
   static void enterBuildMode(String buildingType) {}
 
+  static void callJs(String fnName, Map<String, dynamic> args) {}
+
   static bool get isGameActive => false;
 
   static void registerFlutterCallback(void Function(Map<String, dynamic>) callback) {}

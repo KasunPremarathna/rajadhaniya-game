@@ -12,6 +12,24 @@
   <link rel="icon" type="image/png" href="favicon.png"/>
   <title>Rajadhaniya</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Firebase Core and Services for Production Web -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script>
+    var firebaseConfig = {
+      apiKey: "AIzaSyCZxVuGgBB9NTMsfmjsRjLEIfNyGH-IWq4",
+      authDomain: "rajadhanigamesl.firebaseapp.com",
+      projectId: "rajadhanigamesl",
+      storageBucket: "rajadhanigamesl.firebasestorage.app",
+      messagingSenderId: "999174467302",
+      appId: "1:999174467302:web:7d98924a35f738657f1527",
+      measurementId: "G-JDML960GB4"
+    };
+    firebase.initializeApp(firebaseConfig);
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;600;700&display=swap" rel="stylesheet">
@@ -29,22 +47,92 @@
       width: 100%; height: 100%;
       overflow: hidden;
     }
+    #web-splash {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background-image: url('assets/game/images/loadingscreen.png');
+      background-size: cover;
+      background-position: center;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: 22vh;
+    }
+    #web-splash-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.38);
+      z-index: -1;
+    }
+    .splash-bar-container {
+      width: 360px;
+      height: 22px;
+      background-color: #2C2520;
+      border: 2px solid rgba(255, 179, 0, 0.9);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .splash-bar-fill {
+      width: 0%;
+      height: 100%;
+      background-color: #D4AF37;
+      border-radius: 4px;
+      animation: fillBar 10s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+    }
+    .splash-text {
+      margin-top: 18px;
+      color: #FFD700;
+      font-family: 'Noto Sans Sinhala', sans-serif;
+      font-size: 14px;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    }
+    @keyframes fillBar {
+      0% { width: 0%; }
+      50% { width: 60%; }
+      100% { width: 95%; }
+    }
   </style>
 </head>
 <body>
+  <div id="web-splash">
+    <div id="web-splash-overlay"></div>
+    <div class="splash-bar-container">
+      <div class="splash-bar-fill" id="splash-fill"></div>
+    </div>
+    <div class="splash-text" id="splash-text">සම්පත් බාගත වෙමින් පවතින්නේ... 0%</div>
+  </div>
+
   <div id="flutter-container">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="game_bridge.js"></script>
   </div>
   <script>
+    let pct = 0;
+    let splashInterval = setInterval(() => {
+      pct += Math.floor(Math.random() * 3);
+      if(pct > 95) pct = 95;
+      document.getElementById('splash-text').innerText = 'සම්පත් බාගත වෙමින් පවතින්නේ... ' + pct + '%';
+    }, 200);
+
     // Force Flutter to use HTML renderer to avoid WebGL context conflicts with Phaser
     window.addEventListener('load', function() {
       _flutter.loader.load({
         onEntrypointLoaded: async function(engineInitializer) {
-          const appRunner = await engineInitializer.initializeEngine({
-            renderer: 'html',
-          });
-          await appRunner.runApp();
+          const appRunner = await engineInitializer.initializeEngine();
+          
+          clearInterval(splashInterval);
+          document.getElementById('splash-fill').style.animation = 'none';
+          document.getElementById('splash-fill').style.width = '100%';
+          document.getElementById('splash-text').innerText = 'සම්පත් බාගත වෙමින් පවතින්නේ... 100%';
+          
+          setTimeout(async () => {
+            document.getElementById('web-splash').style.opacity = '0';
+            document.getElementById('web-splash').style.transition = 'opacity 0.4s ease-out';
+            setTimeout(() => document.getElementById('web-splash').style.display = 'none', 400);
+            await appRunner.runApp();
+          }, 300);
         }
       });
     });

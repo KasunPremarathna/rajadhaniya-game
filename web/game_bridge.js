@@ -4,14 +4,14 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.11';
+  var GAME_ASSET_VERSION = 'v1.3.16';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
   var MAX_H = 540;
-  var TILE_W = 64;
-  var TILE_H = 32;
-  var GRID = 100;
+  var TILE_W = 16;
+  var TILE_H = 8;
+  var GRID = 400;
 
   var TASKS_CONFIG = {
     hunting:     { req: 3, icon: '🏹', label: 'Hunting',      sinLabel: 'වන සතුන් දඩයම', resType: 'deer' },
@@ -42,8 +42,8 @@
   var isMoving = false;
   var isMenuOpen = false;
   /* CoC Map Globals */
-  var BORDER = 10;
-  var FOG_RADIUS = 8;
+  var BORDER = 40;
+  var FOG_RADIUS = 32;
   var fogSprites = {};
   var revealedTiles = {};
   var enemyKingdoms = [];
@@ -52,14 +52,14 @@
   var lat = 0;
   var lng = 0;
   var BUILDINGS_CONFIG = {
-    house:       { w: 2, h: 2, texture: 'house',       costs: { gold: 50, wood: 5 }, name: 'House' },
-    farm:        { w: 2, h: 2, texture: 'farm',        costs: { gold: 100, wood: 10 }, name: 'Farm' },
-    mine:        { w: 2, h: 2, texture: 'mine',        costs: { gold: 150, wood: 5, gem: 5 }, name: 'Mine' },
-    workers_hut: { w: 2, h: 2, texture: 'workers_hut', costs: { gold: 80, wood: 10 }, name: 'Workers Hut' },
-    temple:      { w: 3, h: 3, texture: 'temple',      costs: { gold: 300, wood: 20, gem: 5 }, name: 'Temple' },
-    lake:        { w: 4, h: 4, texture: 'lake',        costs: { gold: 50, wood: 5 }, name: 'Lake' },
-    boat_house:  { w: 2, h: 2, texture: 'boat_house',  costs: { gold: 120, wood: 15 }, name: 'Boat House' },
-    fence:       { w: 1, h: 1, texture: 'fence',       costs: { wood: 2 }, name: 'Fence' }
+    house:       { w: 8, h: 8, texture: 'house',       costs: { gold: 50, wood: 5 }, name: 'House' },
+    farm:        { w: 8, h: 8, texture: 'farm',        costs: { gold: 100, wood: 10 }, name: 'Farm' },
+    mine:        { w: 8, h: 8, texture: 'mine',        costs: { gold: 150, wood: 5, gem: 5 }, name: 'Mine' },
+    workers_hut: { w: 8, h: 8, texture: 'workers_hut', costs: { gold: 80, wood: 10 }, name: 'Workers Hut' },
+    temple:      { w: 12, h: 12, texture: 'temple',      costs: { gold: 300, wood: 20, gem: 5 }, name: 'Temple' },
+    lake:        { w: 16, h: 16, texture: 'lake',        costs: { gold: 50, wood: 5 }, name: 'Lake' },
+    boat_house:  { w: 8, h: 8, texture: 'boat_house',  costs: { gold: 120, wood: 15 }, name: 'Boat House' },
+    fence:       { w: 4, h: 4, texture: 'fence',       costs: { wood: 2 }, name: 'Fence' }
   };
   var currentBuildMode = null;
   var ghostBuilding = null;
@@ -72,6 +72,24 @@
     character: { name: '', avatar: '' },
   };
   window.localPlayerData = localPlayerData;
+
+  window.restorePlayerData = function(payloadJson) {
+    try {
+      var cloudData = typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson;
+      if (cloudData && cloudData.gold !== undefined) {
+        localPlayerData.gold = cloudData.gold;
+      }
+      if (cloudData && cloudData.era_id) {
+        localPlayerData.eraId = cloudData.era_id;
+      }
+      if (cloudData && cloudData.tasks) {
+        Object.assign(taskProgress, cloudData.tasks);
+      }
+      console.log('[Bridge] Restored player data from cloud save:', cloudData);
+    } catch (e) {
+      console.error('[Bridge] Failed to restore cloud data:', e);
+    }
+  };
   window.__gameActive = false;
 
   var eraCharacterMap = {
@@ -101,8 +119,7 @@
     var ci = eraCharacterMap[eId] || eraCharacterMap.prehistoric;
     Object.assign(localPlayerData, {
       eraId: eId, eraName: eName, eraBonus: eBonus, lat: eLat, lng: eLng,
-      role: 'Citizen', gold: 500,
-      inventory: { wood: 10, stone: 5, food: 20 },
+      role: 'Citizen',
       character: { name: ci.name, avatar: eId },
     });
     window.__gameState = { eraId: eId, originLat: eLat, originLng: eLng };
@@ -210,7 +227,7 @@
   function getPath(scene, x0, y0, x1, y1) {
     var openSet = [{ x: x0, y: y0, g: 0, f: 0, parent: null }];
     var closedSet = {};
-    var maxSteps = 500;
+    var maxSteps = 5000;
     
     function heuristic(x, y) { return Math.abs(x - x1) + Math.abs(y - y1); }
     function makeKey(x, y) { return x + ',' + y; }
@@ -331,28 +348,38 @@
         /* procedural textures */
         var color = eraColors[eraId] || 0x2E7D32;
 
-        /* Tile 1: Lighter Grass */
-        var g = s.add.graphics();
-        g.fillStyle(0x7cb342, 1);
-        g.beginPath(); g.moveTo(TILE_W / 2, 0); g.lineTo(TILE_W, TILE_H / 2);
-        g.lineTo(TILE_W / 2, TILE_H); g.lineTo(0, TILE_H / 2); g.closePath();
-        g.fillPath(); g.lineStyle(1, 0x558b2f, 0.3); g.strokePath();
-        /* Grass tufts */
-        g.lineStyle(2, 0x689f38, 0.6);
-        g.beginPath(); g.moveTo(20, 12); g.lineTo(18, 16); g.moveTo(20, 16); g.lineTo(22, 12); g.strokePath();
-        g.beginPath(); g.moveTo(44, 20); g.lineTo(42, 24); g.moveTo(44, 24); g.lineTo(46, 20); g.strokePath();
-        g.generateTexture('grass_tile', TILE_W, TILE_H); g.destroy();
+        function generateNaturalGrass(key, baseColorHex, tuftColor, isDarker) {
+          var gw = 64;
+          var gh = 32;
+          var g = s.add.graphics();
+          g.fillStyle(baseColorHex, 1);
+          g.beginPath(); g.moveTo(gw / 2, 0); g.lineTo(gw, gh / 2);
+          g.lineTo(gw / 2, gh); g.lineTo(0, gh / 2); g.closePath();
+          g.fillPath(); 
+          g.lineStyle(1, isDarker ? 0x33691e : 0x558b2f, 0.3); g.strokePath();
 
-        /* Tile 2: Darker Grass (Checkerboard) */
-        var g2 = s.add.graphics();
-        g2.fillStyle(0x689f38, 1);
-        g2.beginPath(); g2.moveTo(TILE_W / 2, 0); g2.lineTo(TILE_W, TILE_H / 2);
-        g2.lineTo(TILE_W / 2, TILE_H); g2.lineTo(0, TILE_H / 2); g2.closePath();
-        g2.fillPath(); g2.lineStyle(1, 0x33691e, 0.3); g2.strokePath();
-        /* Grass tufts */
-        g2.lineStyle(2, 0x558b2f, 0.6);
-        g2.beginPath(); g2.moveTo(24, 18); g.lineTo(22, 22); g.moveTo(24, 22); g.lineTo(26, 18); g2.strokePath();
-        g2.generateTexture('grass_tile_2', TILE_W, TILE_H); g2.destroy();
+          // Scatter random lines to simulate dense natural grass
+          for (var i = 0; i < 45; i++) {
+             var px = Math.random() * gw;
+             var py = Math.random() * gh;
+             var dx = Math.abs(px - gw/2) / (gw/2);
+             var dy = Math.abs(py - gh/2) / (gh/2);
+             if (dx + dy <= 0.85) { // Ensure it stays inside the diamond bounds
+                var alpha = 0.2 + Math.random() * 0.4;
+                var shade = Math.random() > 0.5 ? tuftColor : (isDarker ? 0x2e7d32 : 0x8bc34a);
+                g.lineStyle(1, shade, alpha);
+                var tuftH = 2 + Math.random() * 3;
+                g.beginPath();
+                g.moveTo(px, py);
+                g.lineTo(px + (Math.random() * 2 - 1), py - tuftH);
+                g.strokePath();
+             }
+          }
+          g.generateTexture(key, gw, gh); g.destroy();
+        }
+
+        generateNaturalGrass('grass_tile', 0x7cb342, 0x558b2f, false);
+        generateNaturalGrass('grass_tile_2', 0x689f38, 0x33691e, true);
 
         /* shadow */
         var sg = s.add.graphics();
@@ -367,6 +394,7 @@
 
         /* Load Generated Assets */
         var v = '?v=' + GAME_ASSET_VERSION;
+        s.load.audio('loading_music', 'assets/game/audio/loading_music.mp3' + v);
         s.load.image('tree', 'assets/game/images/sprites/tree.png' + v);
         s.load.spritesheet('deer', 'assets/game/images/sprites/cow.png' + v, { frameWidth: 256, frameHeight: 256 });
         s.load.image('gem_rock', 'assets/game/images/sprites/gem_rock.png' + v);
@@ -472,10 +500,18 @@
         ui.bg = loadedBg;
       }
 
-      var grace = 100, elapsed = 0, isFading = false;
+      /* Play Loading Music */
+      var loadingAudio = null;
+      if (scene.cache.audio.exists('loading_music')) {
+         loadingAudio = scene.sound.add('loading_music', { loop: true, volume: 0.8 });
+         // In web browsers, audio might be blocked without gesture, but the initial flutter tap satisfies this
+         loadingAudio.play();
+      }
+
+      var grace = 10000, elapsed = 0, isFading = false;
       var loaderTimer = scene.time.addEvent({
         delay: 50,
-        repeat: 39,
+        repeat: 199,
         callback: function () {
           if (isFading) return;
           elapsed += 50;
@@ -492,10 +528,21 @@
             );
           }
 
-          if (elapsed >= grace && (ui.ready || elapsed >= 2000)) {
+          if (elapsed >= grace && (ui.ready || elapsed >= 10000)) {
             isFading = true;
             if (loaderTimer) loaderTimer.remove();
             if (ui.pt && ui.pt.active) ui.pt.setText('\u0DC3\u0DB8\u0DCD\u0DB4\u0DD6\u0DBB\u0DCA\u0DAB\u0DBA\u0DD2!');
+            
+            // Fade out audio alongside visuals
+            if (loadingAudio) {
+              scene.tweens.add({
+                targets: loadingAudio,
+                volume: 0,
+                duration: 400,
+                onComplete: function () { loadingAudio.stop(); }
+              });
+            }
+
             scene.tweens.add({
               targets: [ui.bg, ui.ov, ui.tr, ui.fl, ui.pt],
               alpha: 0, duration: 400, ease: 'Power2',
@@ -540,12 +587,12 @@
         scene._buildings.push({sprite: bSprite, tx: b.tx, ty: b.ty, w: config.w, h: config.h});
       });
 
-      /* place grass tiles */
-      for (var r = 0; r < GRID; r++) {
-        for (var c = 0; c < GRID; c++) {
-          var iso = cartToIso(c, r);
-          var tex = (c + r) % 2 === 0 ? 'grass_tile' : 'grass_tile_2';
-          scene.add.image(iso.x + ox + TILE_W / 2, iso.y + oy + TILE_H / 2, tex).setDepth(0);
+      /* place grass tiles using decoupled logical grid */
+      for (var r = 0; r < GRID; r+=4) {
+        for (var c = 0; c < GRID; c+=4) {
+          var isoObj = cartToIso(c + 1.5, r + 1.5);
+          var tex = ((c/4) + (r/4)) % 2 === 0 ? 'grass_tile' : 'grass_tile_2';
+          scene.add.image(isoObj.x + ox + TILE_W / 2, isoObj.y + oy + TILE_H / 2, tex).setDepth(0);
         }
       }
 
@@ -947,19 +994,31 @@
 
       placements.forEach(function (cfg) {
         for (var i = 0; i < cfg.count; i++) {
-          var tx, ty, key;
+          var tx, ty;
           var attempts = 0;
+          var isValid = false;
           do {
-            tx = Math.floor(innerStart + Math.random() * (innerEnd - innerStart));
-            ty = Math.floor(innerStart + Math.random() * (innerEnd - innerStart));
-            key = tx + ',' + ty;
+            tx = Math.floor(innerStart + Math.random() * (innerEnd - innerStart - 4));
+            ty = Math.floor(innerStart + Math.random() * (innerEnd - innerStart - 4));
+            isValid = true;
+            for(var rr=0; rr<4; rr++){
+              for(var cc=0; cc<4; cc++){
+                if(scene._occupied[(tx+cc) + ',' + (ty+rr)]) isValid = false;
+              }
+            }
             attempts++;
-          } while (scene._occupied[key] && attempts < 50);
+          } while (!isValid && attempts < 50);
           if (attempts >= 50) continue;
-          scene._occupied[key] = true;
+          
+          for(var rr=0; rr<4; rr++){
+            for(var cc=0; cc<4; cc++){
+              scene._occupied[(tx+cc) + ',' + (ty+rr)] = true;
+            }
+          }
 
-          var pos = tileToWorld(tx, ty, ox, oy);
-          var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(tx + ty + 0.1);
+          var posIso = cartToIso(tx + 1.5, ty + 1.5);
+          var pos = { x: posIso.x + ox + TILE_W/2, y: posIso.y + oy + TILE_H/2 };
+          var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(tx + ty + 3);
           
           var spr;
           if (cfg.type === 'deer') {
@@ -983,20 +1042,24 @@
 
     /* ─── Border Forest (CoC style dense tree ring) ─── */
     function placeBorderForest(scene, ox, oy) {
-      for (var r = 0; r < GRID; r++) {
-        for (var c = 0; c < GRID; c++) {
+      for (var r = 0; r < GRID; r+=4) {
+        for (var c = 0; c < GRID; c+=4) {
           var isBorder = (r < BORDER || r >= GRID - BORDER || c < BORDER || c >= GRID - BORDER);
           if (!isBorder) continue;
-          var key = c + ',' + r;
-          if (scene._occupied[key]) continue;
+          
+          if (Math.random() < 0.25) continue;
 
-          var distFromEdge = Math.min(c, r, GRID - 1 - c, GRID - 1 - r);
-          if (distFromEdge > 3 && Math.random() < 0.35) continue;
+          for(var rr=0; rr<4; rr++){
+            for(var cc=0; cc<4; cc++){
+              scene._occupied[(c+cc) + ',' + (r+rr)] = true;
+            }
+          }
+          
+          var posObj = cartToIso(c + 1.5, r + 1.5);
+          var pos = { x: posObj.x + ox + TILE_W/2, y: posObj.y + oy + TILE_H/2 };
 
-          scene._occupied[key] = true;
-          var pos = tileToWorld(c, r, ox, oy);
           var spr = scene.add.image(pos.x, pos.y, 'tree')
-            .setOrigin(0.5, 0.8).setDepth(c + r + 1)
+            .setOrigin(0.5, 0.8).setDepth((c+2) + (r+2) + 1)
             .setScale(0.06 + Math.random() * 0.03)
             .setTint(0x2e5c20);
 
@@ -1014,16 +1077,19 @@
     function initFog(scene, ox, oy) {
       fogSprites = {};
       revealedTiles = {};
-      for (var r = 0; r < GRID; r++) {
-        for (var c = 0; c < GRID; c++) {
-          var pos = tileToWorld(c, r, ox, oy);
+      for (var r = 0; r < GRID; r+=4) {
+        for (var c = 0; c < GRID; c+=4) {
+          var posObj = cartToIso(c + 1.5, r + 1.5);
+          var pos = { x: posObj.x + ox + TILE_W/2, y: posObj.y + oy + TILE_H/2 };
           var fg = scene.add.graphics().setDepth(500);
           fg.fillStyle(0x061006, 0.90);
+          
+          var gw = 64; var gh = 32;
           fg.fillPoints([
-            { x: pos.x,            y: pos.y - TILE_H / 2 },
-            { x: pos.x + TILE_W/2, y: pos.y },
-            { x: pos.x,            y: pos.y + TILE_H / 2 },
-            { x: pos.x - TILE_W/2, y: pos.y },
+            { x: pos.x,        y: pos.y - gh / 2 },
+            { x: pos.x + gw/2, y: pos.y },
+            { x: pos.x,        y: pos.y + gh / 2 },
+            { x: pos.x - gw/2, y: pos.y },
           ], true);
           fogSprites[c + ',' + r] = fg;
         }
@@ -1037,7 +1103,11 @@
           var ty = Math.round(cy + dr);
           if (tx < 0 || ty < 0 || tx >= GRID || ty >= GRID) continue;
           if (Math.sqrt(dc*dc + dr*dr) > radius) continue;
-          var key = tx + ',' + ty;
+          
+          var fogTx = tx - (tx % 4);
+          var fogTy = ty - (ty % 4);
+          var key = fogTx + ',' + fogTy;
+          
           if (revealedTiles[key]) continue;
           revealedTiles[key] = true;
           var fg = fogSprites[key];
@@ -1083,7 +1153,11 @@
 
         var kingdom = { name: d.name, tx: d.tx, ty: d.ty, sprite: base, label: lbl, flag: flagG, gold: d.gold, level: d.level, defeated: false };
         enemyKingdoms.push(kingdom);
-        scene._occupied[d.tx + ',' + d.ty] = true;
+        for(var er=0; er<8; er++){
+          for(var ec=0; ec<8; ec++){
+            scene._occupied[(d.tx+ec) + ',' + (d.ty+er)] = true;
+          }
+        }
       });
     }
 
@@ -1218,7 +1292,7 @@
         scene.tweens.add({
           targets: playerSprite,
           x: pos.x, y: pos.y,
-          duration: 120,
+          duration: 30,
           ease: 'Linear',
           onComplete: function () { idx++; nextStep(); },
         });
@@ -1268,7 +1342,7 @@
           scene.tweens.add({
             targets: npc,
             x: pos.x, y: pos.y,
-            duration: 250,
+            duration: 60,
             ease: 'Linear',
             onComplete: function() { 
               idx++; 
