@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../bridge/js_bridge.dart';
+import '../bridge/game_view.dart';
 import '../models/historical_era.dart';
 import '../services/firestore_service.dart';
 import 'update_screen.dart';
@@ -177,7 +178,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         children: [
           // BASE LAYER: The Phaser Game
           const Positioned.fill(
-            child: HtmlElementView(viewType: 'phaser-game'),
+            child: GameViewWidget(),
           ),
 
           // TOP LAYER: The Game Dashboard (HUD)

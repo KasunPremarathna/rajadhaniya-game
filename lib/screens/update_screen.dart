@@ -123,8 +123,10 @@ class _UpdateScreenState extends State<UpdateScreen>
           ),
           // Main content
           Center(
-            child: Container(
-              width: 480,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Container(
+                width: 480,
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 48),
               decoration: BoxDecoration(
                 color: const Color(0xFF161B22).withValues(alpha: 0.95),
@@ -292,8 +294,9 @@ class _UpdateScreenState extends State<UpdateScreen>
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
+    ),
     );
   }
 }

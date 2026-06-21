@@ -152,6 +152,12 @@ When you modify `web/game_bridge.js` or any Phaser-related file, update this sec
 
 ### Change Log
 
+**2026-06-21**: Android Native WebView Integration & Unified Codebase.
+- **Dependencies**: Added `webview_flutter` plugin to `pubspec.yaml` to allow the Android application to render the WebGL Phaser game natively.
+- **Game Hosting**: Created a standalone `web/game.html` file that strips out the Flutter Engine and only loads the Phaser logic and `game_bridge.js`. Deployed this to Firebase Hosting.
+- **Bridge Abstraction**: Replaced the hardcoded `HtmlElementView` in `KingdomViewScreen` with a new conditional `GameViewWidget`. It uses `HtmlElementView` on the Web and `WebViewWidget` on Android/iOS.
+- **JS Event Rewiring**: Updated `game_bridge.js` to detect `window.FlutterBridge.postMessage` (Android WebView JS channel) as a fallback to `window._flutterCallback` (Flutter Web JS interop). Updated the `js_bridge_stub.dart` mobile stub to hold a `WebViewController` reference to pipe Flutter calls back down to the game.
+
 **2026-06-21**: Unified Cross-Platform Codebase Configuration & Deployment.
 - **Application IDs**: Updated `android/app/build.gradle.kts` namespace and `applicationId` to `ktec.rajadhaniya.com`.
 - **Kotlin Refactoring**: Restructured the Android Kotlin directory to match the new package structure (`android/app/src/main/kotlin/ktec/rajadhaniya/com/MainActivity.kt`) and updated the internal `package` declaration.

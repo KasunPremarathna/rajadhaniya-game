@@ -26,10 +26,12 @@ class _LoginScreenState extends State<LoginScreen> {
         await FirebaseAuth.instance.signInWithPopup(provider);
       } else {
         // google_sign_in v7: singleton pattern for native Android/iOS
+        // Initialize the instance first
+        await GoogleSignIn.instance.initialize();
+        
         final googleUser = await GoogleSignIn.instance.authenticate();
         
         final authDetails = googleUser.authentication;
-        
         final idToken = authDetails.idToken;
 
         final clientAuth = await googleUser.authorizationClient.authorizeScopes(

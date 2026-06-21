@@ -147,7 +147,9 @@
   };
 
   window.notifyFlutter = function (payload) {
-    if (typeof window._flutterCallback === 'function') {
+    if (typeof window.FlutterBridge !== 'undefined') {
+      window.FlutterBridge.postMessage(JSON.stringify(payload));
+    } else if (typeof window._flutterCallback === 'function') {
       window._flutterCallback(JSON.stringify(payload));
     } else {
       console.warn('[Bridge] Flutter callback not registered');
