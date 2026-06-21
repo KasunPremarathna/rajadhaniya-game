@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.37';
+  var GAME_ASSET_VERSION = 'v1.3.38';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -456,6 +456,8 @@
         s.load.spritesheet('player', eraFolder + 'walkingemptyhand.png' + v, { frameWidth: 256, frameHeight: 256 });
         s.load.spritesheet('player_axe', eraFolder + 'taskwithaex.png' + v, { frameWidth: 256, frameHeight: 256 });
         s.load.spritesheet('player_pickaxe', eraFolder + 'taskhandonrock.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('npc_farmer', eraFolder + 'npc_farmer.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('npc_lumberjack', eraFolder + 'npc_lumberjack.png' + v, { frameWidth: 256, frameHeight: 256 });
 
         // Era-specific buildings
         s.load.image('house', eraFolder + 'house.png' + v);
@@ -465,6 +467,7 @@
         s.load.image('temple', eraFolder + 'temple.png' + v);
         s.load.image('lake', eraFolder + 'lake.png' + v);
         s.load.image('boat_house', eraFolder + 'boat_house.png' + v);
+        s.load.image('cow_farm', eraFolder + 'cow_farm.png' + v);
         
         /* fence: procedural texture */
         var fcg = s.add.graphics();
@@ -654,7 +657,8 @@
         
         // Spawn farmer for existing cow_farm or lumber_camp
         if (b.type === 'cow_farm' || b.type === 'lumber_camp') {
-          var n = scene.add.sprite(pos.x, pos.y + 10, 'player').setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.25);
+          var spriteKey = b.type === 'cow_farm' ? 'npc_farmer' : 'npc_lumberjack';
+          var n = scene.add.sprite(pos.x, pos.y + 10, spriteKey).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.25);
           n._tileX = b.tx; n._tileY = b.ty;
           n._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
           npcSprites.push(n);
