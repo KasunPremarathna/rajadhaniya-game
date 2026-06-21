@@ -196,7 +196,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         children: [
           // Top HUD Row
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -226,7 +226,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           const Spacer(),
           // Bottom HUD Row (Controls/Menu)
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -296,12 +296,12 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
-              Text(_translate('Construct Building'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(_translate('Construct Building'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Wrap(
                 alignment: WrapAlignment.center,
-                spacing: 12,
-                runSpacing: 12,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   _buildMenuCard(_translate('House'), 'house', Icons.home, 50, 5, 0),
                   _buildMenuCard(_translate('Farm'), 'farm', Icons.agriculture, 100, 10, 0),
@@ -345,22 +345,22 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         JsBridge.enterBuildMode(type); // Start CoC placement mode
       },
       child: Container(
-        width: 100,
-        padding: const EdgeInsets.all(12),
+        width: 80,
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
         child: Column(
           children: [
-            Icon(icon, color: Colors.white, size: 36),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            if (goldCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪙 ', style: TextStyle(fontSize: 10)), Text('$goldCost', style: const TextStyle(color: Colors.white, fontSize: 12))]),
-            if (woodCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪵 ', style: TextStyle(fontSize: 10)), Text('$woodCost', style: const TextStyle(color: Colors.white, fontSize: 12))]),
-            if (gemCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('💎 ', style: TextStyle(fontSize: 10)), Text('$gemCost', style: const TextStyle(color: Colors.white, fontSize: 12))]),
+            Icon(icon, color: Colors.white, size: 28),
+            const SizedBox(height: 6),
+            Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 6),
+            if (goldCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪙 ', style: TextStyle(fontSize: 8)), Text('$goldCost', style: const TextStyle(color: Colors.white, fontSize: 10))]),
+            if (woodCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪵 ', style: TextStyle(fontSize: 8)), Text('$woodCost', style: const TextStyle(color: Colors.white, fontSize: 10))]),
+            if (gemCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('💎 ', style: TextStyle(fontSize: 8)), Text('$gemCost', style: const TextStyle(color: Colors.white, fontSize: 10))]),
           ],
         ),
       ),
@@ -403,10 +403,9 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Avatar
           Container(
-            width: 48,
-            height: 48,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: const Color(0xFFD4A017), width: 2),
@@ -430,7 +429,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  fontSize: 11,
                   shadows: [Shadow(color: Colors.black, blurRadius: 4)],
                 ),
               ),
@@ -438,7 +437,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 widget.era.name,
                 style: const TextStyle(
                   color: Color(0xFFD4A017),
-                  fontSize: 11,
+                  fontSize: 9,
                   shadows: [Shadow(color: Colors.black, blurRadius: 3)],
                 ),
               ),
@@ -446,14 +445,14 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                     decoration: BoxDecoration(
                       color: const Color(0xFFD4A017),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       progressPercent >= 100 ? 'MAX' : 'Lv. ${progressPercent ~/ 10}',
-                      style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.bold),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -474,11 +473,11 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                     )
                   else
                     Container(
-                      width: 60,
-                      height: 6,
+                      width: 40,
+                      height: 4,
                       decoration: BoxDecoration(
                         color: Colors.black45,
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: BorderRadius.circular(2),
                         border: Border.all(color: Colors.black, width: 1),
                       ),
                       child: FractionallySizedBox(
@@ -512,10 +511,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -538,10 +537,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 1),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -568,11 +567,11 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Row(
         children: [
-          Text(icon, style: const TextStyle(fontSize: 16)),
-          const SizedBox(width: 6),
+          Text(icon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
           Text(
             amount.toString(),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
           ),
         ],
       ),
@@ -586,11 +585,11 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Row(
         children: [
-          Text(icon, style: const TextStyle(fontSize: 16)),
-          const SizedBox(width: 6),
+          Text(icon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
           Text(
             '$current/$target',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
           ),
         ],
       ),
@@ -600,7 +599,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
   Widget _buildDivider() {
     return Container(
       width: 1,
-      height: 20,
+      height: 12,
       color: Colors.white.withValues(alpha: 0.2),
     );
   }
@@ -612,17 +611,17 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.black.withValues(alpha: 0.7),
               border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
+            child: Icon(icon, color: Colors.white, size: 18),
           ),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, shadows: [Shadow(blurRadius: 2)])),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 8, shadows: [Shadow(blurRadius: 2)])),
         ],
       ),
     );
@@ -632,28 +631,28 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [color, color.withValues(alpha: 0.7)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
           boxShadow: [
-            BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6, offset: const Offset(0, 2)),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
+            Icon(icon, color: Colors.white, size: 14),
+            const SizedBox(width: 6),
             Text(
               label,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
             ),
           ],
         ),

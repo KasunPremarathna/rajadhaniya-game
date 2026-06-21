@@ -87,18 +87,18 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
               decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 16),
-            Text(
-              widget.translate('Sena Kanda (Training Barracks)'),
-              style: const TextStyle(color: Color(0xFFD4A017), fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-            ),
+              Text(
+                widget.translate('Sena Kanda (Training Barracks)'),
+                style: const TextStyle(color: Color(0xFFD4A017), fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+              ),
             const SizedBox(height: 16),
 
             // Top Status Bar
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFF2C2520),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.white12),
               ),
               child: Row(
@@ -138,7 +138,7 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
             // Active Training Queue
             Text(
               widget.translate('Active Training Queue'),
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Expanded(
@@ -171,13 +171,13 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
       children: [
         Row(
           children: [
-            Icon(icon, color: Colors.white54, size: 16),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            Icon(icon, color: Colors.white54, size: 14),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
           ],
         ),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -193,21 +193,21 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: queuedCount > 0 ? const Color(0xFFD4A017) : Colors.white12, width: queuedCount > 0 ? 2 : 1),
       ),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(6),
       child: Row(
         children: [
           // Icon Placeholder
           Container(
-            width: 40,
-            height: 40,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: Colors.black45,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
               border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5)),
             ),
-            child: const Icon(Icons.person, color: Color(0xFFD4A017)),
+            child: const Icon(Icons.person, color: Color(0xFFD4A017), size: 18),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,17 +215,17 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
               children: [
                 Text(
                   troop.name.split(' (')[0], // Only English part for UI space
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   '${widget.translate('Cost')}: ${troop.housingSpaceCost} ${widget.translate('Space')}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  style: const TextStyle(color: Colors.white54, fontSize: 9),
                 ),
                 Text(
                   '${widget.translate('Time')}: ${troop.trainingTime}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                  style: const TextStyle(color: Colors.white54, fontSize: 8),
                 ),
               ],
             ),
@@ -237,20 +237,20 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
               GestureDetector(
                 onTap: () => _addTroop(troop),
                 child: Container(
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                  child: const Icon(Icons.add, color: Colors.green, size: 16),
+                  child: const Icon(Icons.add, color: Colors.green, size: 14),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(queuedCount.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
+              Text(queuedCount.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
+              const SizedBox(height: 2),
               GestureDetector(
                 onTap: () => _removeTroop(troop),
                 child: Container(
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                  child: const Icon(Icons.remove, color: Colors.red, size: 16),
+                  child: const Icon(Icons.remove, color: Colors.red, size: 14),
                 ),
               ),
             ],
@@ -262,31 +262,31 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
 
   Widget _buildQueueItem(Troop troop, int count) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFF2C2520),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: Colors.white12),
       ),
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 24,
+            height: 24,
             decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(4)),
-            child: const Icon(Icons.person, color: Color(0xFFD4A017), size: 20),
+            child: const Icon(Icons.person, color: Color(0xFFD4A017), size: 14),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   '${troop.name.split(' (')[0]} x$count',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: const LinearProgressIndicator(
@@ -299,10 +299,10 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Text(
             _formatTime(troop.trainingTimeSeconds * count),
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            style: const TextStyle(color: Colors.white54, fontSize: 10),
           ),
         ],
       ),
