@@ -49,6 +49,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         'needs': _hudData!['needs'] ?? {},
         'era_id': widget.era.id,
         'era_name': widget.era.name,
+        'buildings': _hudData!['buildings'] ?? [],
       });
     }
   }
@@ -171,6 +172,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                   'needs': _hudData!['needs'] ?? {},
                   'era_id': widget.era.id,
                   'era_name': widget.era.name,
+                  'buildings': _hudData!['buildings'] ?? [],
                 });
               }
               await FirebaseAuth.instance.signOut();

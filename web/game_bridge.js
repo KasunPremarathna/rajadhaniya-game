@@ -103,6 +103,9 @@
       if (cloudData && cloudData.needs) {
         Object.assign(localPlayerData.needs, cloudData.needs);
       }
+      if (cloudData && cloudData.buildings) {
+        localStorage.setItem('rajadhaniya_buildings', JSON.stringify(cloudData.buildings));
+      }
       console.log('[Bridge] Restored player data from cloud save:', cloudData);
     } catch (e) {
       console.error('[Bridge] Failed to restore cloud data:', e);
@@ -2387,7 +2390,8 @@
         milk: localPlayerData.inventory.milk || 0,
         meatRate: cowFarmCount * 1200, // 1 per 3s = 1200/hr
         milkRate: cowFarmCount * 3600, // 3 per 3s = 3600/hr
-        woodRate: lumberCampCount * 2400 // 2 per 3s = 2400/hr
+        woodRate: lumberCampCount * 2400, // 2 per 3s = 2400/hr
+        buildings: JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]')
       });
       checkEraCompletion(scene);
     }
