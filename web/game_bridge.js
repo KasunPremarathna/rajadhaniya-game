@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.33';
+  var GAME_ASSET_VERSION = 'v1.3.34';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -256,21 +256,40 @@
     return { tx: Math.round(cart.cx), ty: Math.round(cart.cy) };
   }
 
-  function getPath(scene, x0, y0, x1, y1, range) {
-    range = range || 0;
+  function getPath(scene, x0, y0, x1, y1, rangeObj) {
+    var targetRect = (typeof rangeObj === 'object' && rangeObj !== null) ? rangeObj : null;
+    var range = targetRect ? 0 : (rangeObj || 0);
+
     var openSet = [{ x: x0, y: y0, g: 0, f: 0, parent: null }];
     var closedSet = {};
     var maxSteps = 5000;
     
-    function heuristic(x, y) { return Math.abs(x - x1) + Math.abs(y - y1); }
     function makeKey(x, y) { return x + ',' + y; }
+
+    function heuristic(x, y) {
+      if (targetRect) {
+        var dx = Math.max(targetRect.tx - x, 0, x - (targetRect.tx + targetRect.w - 1));
+        var dy = Math.max(targetRect.ty - y, 0, y - (targetRect.ty + targetRect.h - 1));
+        return dx + dy;
+      }
+      return Math.abs(x - x1) + Math.abs(y - y1);
+    }
     
     while(openSet.length > 0 && maxSteps-- > 0) {
       openSet.sort(function(a, b) { return a.f - b.f; });
       var current = openSet.shift();
       var key = makeKey(current.x, current.y);
       
-      if (Math.abs(current.x - x1) + Math.abs(current.y - y1) <= range) {
+      var reached = false;
+      if (targetRect) {
+        var dx = Math.max(targetRect.tx - current.x, 0, current.x - (targetRect.tx + targetRect.w - 1));
+        var dy = Math.max(targetRect.ty - current.y, 0, current.y - (targetRect.ty + targetRect.h - 1));
+        reached = (dx + dy <= 1); // 1 = exactly adjacent
+      } else {
+        reached = (Math.abs(current.x - x1) + Math.abs(current.y - y1) <= range);
+      }
+
+      if (reached) {
         var path = [];
         var curr = current;
         while(curr) { path.unshift({x: curr.x, y: curr.y}); curr = curr.parent; }
@@ -287,11 +306,7 @@
         var n = neighbors[i];
         if (n.x < 0 || n.x >= GRID || n.y < 0 || n.y >= GRID) continue;
         if (scene._barriers && scene._barriers[makeKey(n.x, n.y)]) continue; // fence = absolute barrier
-        if (scene._occupied[makeKey(n.x, n.y)]) {
-          var nDist = Math.abs(n.x - x1) + Math.abs(n.y - y1);
-          // Block occupied tiles unless they are within harvest range of target
-          if (nDist > range) continue;
-        }
+        if (scene._occupied[makeKey(n.x, n.y)]) continue; // fully block since we stop adjacent anyway
         if (closedSet[makeKey(n.x, n.y)]) continue;
         
         var tentativeG = current.g + 1;
@@ -853,23 +868,22 @@
           if (isMoving) return;
           var pTile = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
           
-          var targetTx = tile.tx;
-          var targetTy = tile.ty;
+          var tRect = null;
           if (clickedRes.isBuilding && clickedRes.buildingData) {
-            targetTx = clickedRes.buildingData.tx + Math.floor(clickedRes.buildingData.w / 2);
-            targetTy = clickedRes.buildingData.ty + Math.floor(clickedRes.buildingData.h / 2);
+            tRect = { tx: clickedRes.buildingData.tx, ty: clickedRes.buildingData.ty, w: clickedRes.buildingData.w, h: clickedRes.buildingData.h };
           } else {
             var rx = (clickedRes.sprite && clickedRes.sprite._tileX !== undefined) ? clickedRes.sprite._tileX : clickedRes.tileX;
             var ry = (clickedRes.sprite && clickedRes.sprite._tileY !== undefined) ? clickedRes.sprite._tileY : clickedRes.tileY;
-            targetTx = rx + 1;
-            targetTy = ry + 1;
+            tRect = { tx: rx, ty: ry, w: 4, h: 4 };
           }
 
-          var dist = Math.abs(pTile.tx - targetTx) + Math.abs(pTile.ty - targetTy);
-          if (dist <= 5) {
+          var dx = Math.max(tRect.tx - pTile.tx, 0, pTile.tx - (tRect.tx + tRect.w - 1));
+          var dy = Math.max(tRect.ty - pTile.ty, 0, pTile.ty - (tRect.ty + tRect.h - 1));
+          
+          if (dx + dy <= 2) { // 2 allows reaching it diagonally or slightly adjacent
             createContextualMenu(scene, clickedRes);
           } else {
-            movePlayerToTile(scene, targetTx, targetTy, ox, oy, 4, function(success) {
+            movePlayerToTile(scene, 0, 0, ox, oy, tRect, function(success) {
               if (success) {
                 createContextualMenu(scene, clickedRes);
               }
