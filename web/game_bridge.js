@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.36';
+  var GAME_ASSET_VERSION = 'v1.3.37';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -652,8 +652,8 @@
         }
         scene._buildings.push({sprite: bSprite, tx: b.tx, ty: b.ty, w: config.w, h: config.h, type: b.type});
         
-        // Spawn farmer for existing cow_farm
-        if (b.type === 'cow_farm') {
+        // Spawn farmer for existing cow_farm or lumber_camp
+        if (b.type === 'cow_farm' || b.type === 'lumber_camp') {
           var n = scene.add.sprite(pos.x, pos.y + 10, 'player').setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.25);
           n._tileX = b.tx; n._tileY = b.ty;
           n._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
@@ -882,10 +882,10 @@
           var dy = Math.max(tRect.ty - pTile.ty, 0, pTile.ty - (tRect.ty + tRect.h - 1));
           
           if (dx + dy <= 2) { // 2 allows reaching it diagonally or slightly adjacent
-            if (clickedRes.type !== 'tree') createContextualMenu(scene, clickedRes);
+            createContextualMenu(scene, clickedRes);
           } else {
             movePlayerToTile(scene, 0, 0, ox, oy, tRect, function(success) {
-              if (success && clickedRes.type !== 'tree') {
+              if (success) {
                 createContextualMenu(scene, clickedRes);
               }
             });
@@ -990,6 +990,11 @@
           if (cowFarmCount > 0) {
             localPlayerData.inventory.meat = (localPlayerData.inventory.meat || 0) + (1 * cowFarmCount);
             localPlayerData.inventory.milk = (localPlayerData.inventory.milk || 0) + (3 * cowFarmCount);
+          }
+          
+          var lumberCampCount = scene._buildings.filter(function(b) { return b.type === 'lumber_camp'; }).length;
+          if (lumberCampCount > 0) {
+            taskProgress['wood'] = (taskProgress['wood'] || 0) + (2 * lumberCampCount);
           }
 
           refreshHud(scene);
@@ -1711,8 +1716,8 @@
       banner.strokePath();
       elems.push(banner);
 
-      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest', house: 'House', farm: 'Farm', workers_hut: 'Workers Hut', temple: 'Temple', boat_house: 'Boat House', cow_farm: 'Cow Farmer Hut', mine: 'Mine' };
-      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව', house: 'නිවස', farm: 'ගොවිපල', workers_hut: 'කම්කරු නිවස', temple: 'පන්සල', boat_house: 'බෝට්ටු නිවස', cow_farm: 'එළදෙනුන් ගොවිපල', mine: 'පතල' };
+      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest', house: 'House', farm: 'Farm', workers_hut: 'Workers Hut', temple: 'Temple', boat_house: 'Boat House', cow_farm: 'Cow Farmer Hut', lumber_camp: 'Lumber Camp', mine: 'Mine' };
+      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව', house: 'නිවස', farm: 'ගොවිපල', workers_hut: 'කම්කරු නිවස', temple: 'පන්සල', boat_house: 'බෝට්ටු නිවස', cow_farm: 'එළදෙනුන් ගොවිපල', lumber_camp: 'දැව කඳවුර', mine: 'පතල' };
       var taskMap = { tree: 'wood', deer: 'hunting', gem_rock: 'gem', lake: 'fish', fence: 'fence' };
       var taskKey = taskMap[res.type];
       var cfg = TASKS_CONFIG[taskKey];
@@ -2377,6 +2382,8 @@
     function refreshHud(scene) {
       var cowFarmCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'cow_farm'; }).length : 0;
       
+      var lumberCampCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'lumber_camp'; }).length : 0;
+      
       // Forward resource updates to Flutter instead of drawing text
       window.notifyFlutter({
         type: 'hud_update',
@@ -2388,7 +2395,8 @@
         meat: localPlayerData.inventory.meat || 0,
         milk: localPlayerData.inventory.milk || 0,
         meatRate: cowFarmCount * 1200, // 1 per 3s = 1200/hr
-        milkRate: cowFarmCount * 3600  // 3 per 3s = 3600/hr
+        milkRate: cowFarmCount * 3600, // 3 per 3s = 3600/hr
+        woodRate: lumberCampCount * 2400 // 2 per 3s = 2400/hr
       });
       checkEraCompletion(scene);
     }

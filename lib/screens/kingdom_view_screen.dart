@@ -459,6 +459,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                   _buildMenuCard(_translate('House'), 'house', Icons.home, 50, 5, 0),
                   _buildMenuCard(_translate('Farm'), 'farm', Icons.agriculture, 100, 10, 0),
                   _buildMenuCard(_translate('Cow Farm'), 'cow_farm', Icons.pets, 150, 20, 0),
+                  _buildMenuCard(_translate('Lumber Camp'), 'lumber_camp', Icons.forest, 60, 10, 0),
                   _buildMenuCard(_translate('Mine'), 'mine', Icons.construction, 150, 5, 5),
                   _buildMenuCard(_translate('Workers'), 'workers_hut', Icons.people, 80, 10, 0),
                   _buildMenuCard(_translate('Temple'), 'temple', Icons.account_balance, 300, 20, 5),
@@ -676,7 +677,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         children: [
           _buildResourceItem('🪙', _translate('Gold'), _hudData?['gold'] ?? 500),
           _buildDivider(),
-          _buildResourceTaskItem('🪵', _translate('Wood'), 'wood', tasks, config),
+          _buildResourceTaskItem('🪵', _translate('Wood'), 'wood', tasks, config, rate: _hudData?['woodRate']),
           _buildDivider(),
           _buildResourceTaskItem('💎', _translate('Gems'), 'gem', tasks, config),
           _buildDivider(),
@@ -799,19 +800,29 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     );
   }
 
-  Widget _buildResourceTaskItem(String icon, String name, String key, Map tasks, Map config) {
+  Widget _buildResourceTaskItem(String icon, String name, String key, Map tasks, Map config, {int? rate}) {
     final current = tasks[key] ?? 0;
     final target = config[key]?['req'] ?? '?';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(icon, style: const TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          Text(
-            '$current/$target',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+          Row(
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 4),
+              Text(
+                '$current/$target',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+            ],
           ),
+          if (rate != null && rate > 0)
+            Text(
+              '+$rate/hr',
+              style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 8, fontWeight: FontWeight.bold),
+            ),
         ],
       ),
     );
