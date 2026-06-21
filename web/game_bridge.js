@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.35';
+  var GAME_ASSET_VERSION = 'v1.3.36';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -882,10 +882,10 @@
           var dy = Math.max(tRect.ty - pTile.ty, 0, pTile.ty - (tRect.ty + tRect.h - 1));
           
           if (dx + dy <= 2) { // 2 allows reaching it diagonally or slightly adjacent
-            createContextualMenu(scene, clickedRes);
+            if (clickedRes.type !== 'tree') createContextualMenu(scene, clickedRes);
           } else {
             movePlayerToTile(scene, 0, 0, ox, oy, tRect, function(success) {
-              if (success) {
+              if (success && clickedRes.type !== 'tree') {
                 createContextualMenu(scene, clickedRes);
               }
             });
@@ -1292,11 +1292,13 @@
             spr.setScale(cfg.type === 'tree' ? 0.25 : 0.06);
             resourceSprites.push({ type: cfg.type, sprite: spr, shadow: shad, tileX: tx, tileY: ty });
 
-            scene.tweens.add({
-              targets: spr, y: pos.y - 4,
-              duration: 1200 + Math.random() * 800,
-              yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-            });
+            if (cfg.type !== 'tree') {
+              scene.tweens.add({
+                targets: spr, y: pos.y - 4,
+                duration: 1200 + Math.random() * 800,
+                yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+              });
+            }
           }
         }
       });
