@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.39';
+  var GAME_ASSET_VERSION = 'v1.3.40';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -469,21 +469,8 @@
         s.load.image('boat_house', eraFolder + 'boat_house.png' + v);
         s.load.image('cow_farm', eraFolder + 'cow_farm.png' + v);
         
-        /* fence: procedural texture */
-        var fcg = s.add.graphics();
-        fcg.lineStyle(2, 0x5D4037, 1);
-        fcg.beginPath(); fcg.moveTo(6, 26); fcg.lineTo(26, 6); fcg.moveTo(6, 6); fcg.lineTo(26, 26); fcg.strokePath(); // cross
-        fcg.fillStyle(0x4E342E, 1); fcg.fillRect(14, 4, 4, 26); // center post
-        fcg.generateTexture('fence', 32, 32); fcg.destroy();
-        
-        /* enemy_base: red-roofed enemy hut cluster */
-        var eg = s.add.graphics();
-        eg.fillStyle(0x8B4513, 1); eg.fillRect(10, 35, 44, 22); // base
-        eg.fillStyle(0xCC2222, 1); eg.beginPath(); eg.moveTo(32, 8); eg.lineTo(54, 35); eg.lineTo(10, 35); eg.closePath(); eg.fillPath(); // red roof
-        eg.fillStyle(0x4a1a00, 1); eg.fillRect(24, 40, 16, 17); // door
-        eg.fillStyle(0x8B4513, 1); eg.fillRect(40, 30, 22, 16); // side hut
-        eg.fillStyle(0xCC2222, 1); eg.beginPath(); eg.moveTo(51, 18); eg.lineTo(62, 30); eg.lineTo(40, 30); eg.closePath(); eg.fillPath(); // side roof
-        eg.generateTexture('enemy_base', 64, 60); eg.destroy();
+        s.load.image('fence', eraFolder + 'fence.png' + v);
+        s.load.image('enemy_base', eraFolder + 'enemy_base.png' + v);
         /* particles */
         var pg1 = s.add.graphics();
         pg1.fillStyle(0x4CAF50, 1); pg1.fillCircle(4, 4, 4);
