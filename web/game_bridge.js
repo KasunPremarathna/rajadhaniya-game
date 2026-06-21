@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.34';
+  var GAME_ASSET_VERSION = 'v1.3.35';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -36,6 +36,7 @@
   var playerSprite = null;
   var hudText = null;
   var resourceSprites = [];
+  var npcSprites = [];
   var taskProgress = { hunting: 10, wood: 15, gem: 5, house: 0, workers_hut: 0, temple: 0, boat_house: 0, lake: 0, fish: 0, fence: 0 };
   var radialMenuContainer = null;
   var radialMenuElements = null;
@@ -631,7 +632,7 @@
       scene._occupied = {};
       scene._barriers = {}; // fence-only absolute barriers
       scene._buildings = [];
-      var npcSprites = [];
+      npcSprites = [];
 
       /* load persistent buildings */
       var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
