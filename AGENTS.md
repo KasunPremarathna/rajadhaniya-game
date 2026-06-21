@@ -152,6 +152,14 @@ When you modify `web/game_bridge.js` or any Phaser-related file, update this sec
 
 ### Change Log
 
+**2026-06-21**: Unified Cross-Platform Codebase Configuration & Deployment.
+- **Application IDs**: Updated `android/app/build.gradle.kts` namespace and `applicationId` to `ktec.rajadhaniya.com`.
+- **Kotlin Refactoring**: Restructured the Android Kotlin directory to match the new package structure (`android/app/src/main/kotlin/ktec/rajadhaniya/com/MainActivity.kt`) and updated the internal `package` declaration.
+- **App Naming**: Standardized the app name to "Rajadhaniya" across `AndroidManifest.xml` and `web/index.html`.
+- **Icon Updates**: Replaced all default Flutter placeholder icons with custom Rajadhaniya app icons in `android/app/src/main/res/mipmap-*` and `web/icons/`.
+- **Firebase Deployment**: Successfully built the optimized Flutter web application (`flutter build web --release`) and deployed it directly to Firebase Hosting (`firebase deploy --only hosting`).
+
+
 **2026-06-20**: Firebase Cloud Saves & Google Sign-In Integration.
 - **Dependencies**: Added `firebase_core`, `firebase_auth`, `google_sign_in`, and `cloud_firestore` to `pubspec.yaml` and set up the FlutterFire CLI configuration.
 - **Authentication Flow**: Created a dedicated `LoginScreen` widget that strictly handles the new `google_sign_in` v7 API (`GoogleSignIn.instance.authenticate()`, `authentication.idToken`) and signs the user into Firebase before the game boots.
