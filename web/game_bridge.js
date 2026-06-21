@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.21';
+  var GAME_ASSET_VERSION = 'v1.3.22';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -71,6 +71,7 @@
     role: 'Citizen', gold: 500,
     inventory: { wood: 10, stone: 5, food: 20 },
     character: { name: '', avatar: '' },
+    needs: { hunger: 100, thirst: 100, hygiene: 100, toilet: 100 }
   };
   window.localPlayerData = localPlayerData;
 
@@ -85,6 +86,9 @@
       }
       if (cloudData && cloudData.tasks) {
         Object.assign(taskProgress, cloudData.tasks);
+      }
+      if (cloudData && cloudData.needs) {
+        Object.assign(localPlayerData.needs, cloudData.needs);
       }
       console.log('[Bridge] Restored player data from cloud save:', cloudData);
     } catch (e) {
@@ -753,11 +757,11 @@
           for (var i = 0; i < scene._buildings.length; i++) {
             var b = scene._buildings[i];
             if (tile.tx >= b.tx && tile.tx < b.tx + b.w && tile.ty >= b.ty && tile.ty < b.ty + b.h) {
-              if (b.type === 'lake') {
-                clickedRes = { type: 'lake', sprite: b.sprite, isHarvesting: false, isBuilding: true };
-                break;
-              } else if (b.type === 'fence') {
+              if (b.type === 'fence') {
                 clickedRes = { type: 'fence', sprite: b.sprite, isBuilding: true, buildingData: b };
+                break;
+              } else {
+                clickedRes = { type: b.type, sprite: b.sprite, isHarvesting: false, isBuilding: true, buildingData: b };
                 break;
               }
             }
@@ -780,6 +784,18 @@
         }
 
         handleSingleTap(scene, ptr, ox, oy);
+      });
+
+      scene.time.addEvent({
+        delay: 3000,
+        callback: function() {
+          localPlayerData.needs.hunger = Math.max(0, localPlayerData.needs.hunger - 1);
+          localPlayerData.needs.thirst = Math.max(0, localPlayerData.needs.thirst - 1);
+          localPlayerData.needs.hygiene = Math.max(0, localPlayerData.needs.hygiene - 1);
+          localPlayerData.needs.toilet = Math.max(0, localPlayerData.needs.toilet - 1);
+          refreshHud(scene);
+        },
+        loop: true
       });
 
       refreshHud(scene);
@@ -1416,19 +1432,37 @@
       var cx = res.sprite.x;
       var cy = res.sprite.y - 40;
       var elems = [];
+      
+      function addNeedsButton(s, px, py, elArr, label, callback, width) {
+        var w = width || 160;
+        var btn = s.add.graphics().setDepth(201);
+        btn.fillStyle(0x005A9C, 1);
+        btn.fillRoundedRect(px - w/2, py - 20, w, 40, 8);
+        btn.lineStyle(2, 0x3399FF, 1);
+        btn.strokeRoundedRect(px - w/2, py - 20, w, 40, 8);
+        elArr.push(btn);
+        var txt = s.add.text(px, py, label, { fontFamily: 'monospace', fontSize: '13px', color: '#FFF', fontStyle: 'bold' }).setOrigin(0.5).setDepth(202);
+        elArr.push(txt);
+        var z = s.add.zone(px, py, w, 40).setDepth(203).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', function(ptr, localX, localY, ev) {
+          if (ev) ev.stopPropagation(); if (ptr.event) ptr.event.stopPropagation();
+          closeContextualMenu(s); callback();
+        });
+        elArr.push(z);
+      }
 
       // 1. Draw a shadow for depth
       var shadow = scene.add.graphics().setDepth(199);
       shadow.fillStyle(0x000000, 0.5);
-      shadow.fillRoundedRect(cx - 105, cy - 95, 220, 180, 12);
+      shadow.fillRoundedRect(cx - 105, cy - 95, 220, 230, 12);
       elems.push(shadow);
 
       // 2. Main Background Box
       var bg = scene.add.graphics().setDepth(200);
       bg.fillStyle(0x1F1A17, 0.98); // Dark rich brown background
-      bg.fillRoundedRect(cx - 110, cy - 100, 220, 180, 12);
+      bg.fillRoundedRect(cx - 110, cy - 100, 220, 230, 12);
       bg.lineStyle(2, 0xD4AF37, 1); // Gold border
-      bg.strokeRoundedRect(cx - 110, cy - 100, 220, 180, 12);
+      bg.strokeRoundedRect(cx - 110, cy - 100, 220, 230, 12);
       elems.push(bg);
 
       // 3. Title Banner Background
@@ -1443,8 +1477,8 @@
       banner.strokePath();
       elems.push(banner);
 
-      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest' };
-      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව' };
+      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest', house: 'House', farm: 'Farm', workers_hut: 'Workers Hut', temple: 'Temple', boat_house: 'Boat House', mine: 'Mine' };
+      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව', house: 'නිවස', farm: 'ගොවිපල', workers_hut: 'කම්කරු නිවස', temple: 'පන්සල', boat_house: 'බෝට්ටු නිවස', mine: 'පතල' };
       var taskMap = { tree: 'wood', deer: 'hunting', gem_rock: 'gem', lake: 'fish', fence: 'fence' };
       var taskKey = taskMap[res.type];
       var cfg = TASKS_CONFIG[taskKey];
@@ -1573,38 +1607,72 @@
         elems.push(zone);
 
       } else if (!res.isHarvesting) {
-        var btn = scene.add.graphics().setDepth(201);
-        btn.fillStyle(0x2E7D32, 1); // Dark green base
-        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        btn.lineStyle(2, 0x4CAF50, 1); // Bright green border
-        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        elems.push(btn);
+        var canHarvest = (res.type === 'lake' || !res.isBuilding);
+        var currentBtnY = btnY;
+        
+        if (canHarvest) {
+          var btn = scene.add.graphics().setDepth(201);
+          btn.fillStyle(0x2E7D32, 1); // Dark green base
+          btn.fillRoundedRect(cx - 80, currentBtnY - 20, 160, 40, 8);
+          btn.lineStyle(2, 0x4CAF50, 1); // Bright green border
+          btn.strokeRoundedRect(cx - 80, currentBtnY - 20, 160, 40, 8);
+          elems.push(btn);
 
-        var harvestTxt = isSi ? 'අස්වනු නෙලන්න' : 'Start Harvest';
-        var iconStr = cfg.icon + ' ' + harvestTxt;
-        var txt = scene.add.text(cx, btnY, iconStr, {
-          fontFamily: 'monospace', fontSize: '15px', color: '#FFF', fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(202);
-        elems.push(txt);
+          var harvestTxt = isSi ? 'අස්වනු නෙලන්න' : 'Start Harvest';
+          var iconStr = (cfg && cfg.icon ? cfg.icon : '⚒️') + ' ' + harvestTxt;
+          var txt = scene.add.text(cx, currentBtnY, iconStr, {
+            fontFamily: 'monospace', fontSize: '15px', color: '#FFF', fontStyle: 'bold'
+          }).setOrigin(0.5).setDepth(202);
+          elems.push(txt);
 
-        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', function(ptr, localX, localY, ev) {
-          if (ev) ev.stopPropagation();
-          if (ptr.event) ptr.event.stopPropagation();
-          closeContextualMenu(scene);
-          if (res.isBuilding) {
-            res.isHarvesting = true;
-            playHarvestEffect(scene, cx, cy + 40, 'spark');
-            setTimeout(function() { 
-              res.isHarvesting = false;
-              taskProgress[taskKey] = (taskProgress[taskKey] || 0) + 1;
-              refreshHud(scene);
-            }, 1000);
-          } else {
-            startHarvest(scene, res, taskKey);
-          }
-        });
-        elems.push(zone);
+          var zone = scene.add.zone(cx, currentBtnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
+          zone.on('pointerdown', function(ptr, localX, localY, ev) {
+            if (ev) ev.stopPropagation();
+            if (ptr.event) ptr.event.stopPropagation();
+            closeContextualMenu(scene);
+            if (res.isBuilding) {
+              res.isHarvesting = true;
+              playHarvestEffect(scene, cx, cy + 40, 'spark');
+              setTimeout(function() { 
+                res.isHarvesting = false;
+                taskProgress[taskKey] = (taskProgress[taskKey] || 0) + 1;
+                refreshHud(scene);
+              }, 1000);
+            } else {
+              startHarvest(scene, res, taskKey);
+            }
+          });
+          elems.push(zone);
+        }
+
+        var needsBtnY = canHarvest ? currentBtnY + 45 : currentBtnY;
+        var rType = res.type;
+        if (rType === 'farm' || rType === 'deer') {
+          addNeedsButton(scene, cx, needsBtnY, elems, '🍔 ' + (isSi ? 'ආහාර ගන්න' : 'Eat Food'), function() {
+            localPlayerData.needs.hunger = Math.min(100, localPlayerData.needs.hunger + 40);
+            floatText(scene, '🍔 +40', cx, needsBtnY, '#4CAF50');
+            refreshHud(scene);
+          });
+        }
+        else if (rType === 'lake') {
+          addNeedsButton(scene, cx - 45, needsBtnY, elems, '💧 ' + (isSi ? 'බොන්න' : 'Drink'), function() {
+            localPlayerData.needs.thirst = Math.min(100, localPlayerData.needs.thirst + 30);
+            floatText(scene, '💧 +30', cx - 45, needsBtnY, '#4CAF50');
+            refreshHud(scene);
+          }, 80);
+          addNeedsButton(scene, cx + 45, needsBtnY, elems, '🧼 ' + (isSi ? 'නාන්න' : 'Bathe'), function() {
+            localPlayerData.needs.hygiene = Math.min(100, localPlayerData.needs.hygiene + 50);
+            floatText(scene, '🧼 +50', cx + 45, needsBtnY, '#4CAF50');
+            refreshHud(scene);
+          }, 80);
+        }
+        else if (rType === 'house' || rType === 'workers_hut' || rType === 'tree') {
+          addNeedsButton(scene, cx, needsBtnY, elems, '🚽 ' + (isSi ? 'වැසිකිළිය' : 'Use Toilet'), function() {
+            localPlayerData.needs.toilet = 100;
+            floatText(scene, '🚽 +100', cx, needsBtnY, '#4CAF50');
+            refreshHud(scene);
+          });
+        }
 
       } else {
         var btn = scene.add.graphics().setDepth(201);
@@ -1966,7 +2034,8 @@
         type: 'hud_update',
         tasks: taskProgress,
         config: TASKS_CONFIG,
-        gold: localPlayerData.gold
+        gold: localPlayerData.gold,
+        needs: localPlayerData.needs
       });
       checkEraCompletion(scene);
     }

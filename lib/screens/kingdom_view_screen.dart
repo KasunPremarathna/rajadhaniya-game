@@ -46,6 +46,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       await FirestoreService.saveUserData({
         'gold': _hudData!['gold'] ?? 0,
         'tasks': _hudData!['tasks'] ?? {},
+        'needs': _hudData!['needs'] ?? {},
         'era_id': widget.era.id,
         'era_name': widget.era.name,
       });
@@ -106,6 +107,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         case 'Era Objectives': return 'යුගයේ අරමුණු';
         case 'Complete all objectives to advance.': return 'ඉදිරියට යාමට සියලු අරමුණු සම්පූර්ණ කරන්න.';
         case 'ADVANCE TO NEXT ERA': return 'ඊළඟ යුගයට යන්න';
+        case 'Hunger': return 'බඩගින්න';
+        case 'Thirst': return 'පිපාසය';
+        case 'Hygiene': return 'පිරිසිදුකම';
+        case 'Toilet': return 'වැසිකිළිය';
       }
     }
     return key;
@@ -158,6 +163,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 await FirestoreService.saveUserData({
                   'gold': _hudData!['gold'] ?? 0,
                   'tasks': _hudData!['tasks'] ?? {},
+                  'needs': _hudData!['needs'] ?? {},
                   'era_id': widget.era.id,
                   'era_name': widget.era.name,
                 });
@@ -221,6 +227,12 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerRight,
                         child: _buildTaskBar(),
+                      ),
+                      const SizedBox(height: 8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: _buildNeedsBar(),
                       ),
                     ],
                   ),
@@ -695,6 +707,54 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           _buildResourceTaskItem('🐟', _translate('Fish'), 'fish', tasks, config),
           _buildDivider(),
           _buildResourceTaskItem('🚧', _translate('Fence'), 'fence', tasks, config),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNeedsBar() {
+    final needs = _hudData?['needs'] ?? {'hunger': 100, 'thirst': 100, 'hygiene': 100, 'toilet': 100};
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF005A9C).withValues(alpha: 0.5), width: 1),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildNeedItem('🍔', _translate('Hunger'), (needs['hunger'] ?? 100).toInt(), Colors.orange),
+          _buildDivider(),
+          _buildNeedItem('💧', _translate('Thirst'), (needs['thirst'] ?? 100).toInt(), Colors.blue),
+          _buildDivider(),
+          _buildNeedItem('🧼', _translate('Hygiene'), (needs['hygiene'] ?? 100).toInt(), Colors.teal),
+          _buildDivider(),
+          _buildNeedItem('🚽', _translate('Toilet'), (needs['toilet'] ?? 100).toInt(), Colors.brown),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNeedItem(String icon, String name, int amount, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Row(
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 40,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: amount / 100.0,
+                backgroundColor: Colors.white24,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 8,
+              ),
+            ),
+          ),
         ],
       ),
     );

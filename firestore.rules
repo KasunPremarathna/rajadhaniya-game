@@ -26,12 +26,13 @@ service cloud.firestore {
         let validGameData = !('game_data' in data) || (
           data.game_data is map &&
           // Block injected cheat/bloat fields inside game_data
-          data.game_data.keys().hasOnly(['gold', 'tasks', 'era_id', 'era_name']) &&
+          data.game_data.keys().hasOnly(['gold', 'tasks', 'era_id', 'era_name', 'needs']) &&
           // Validate types
           (!('gold' in data.game_data) || data.game_data.gold is number) &&
           (!('era_id' in data.game_data) || data.game_data.era_id is string) &&
           (!('era_name' in data.game_data) || data.game_data.era_name is string) &&
-          (!('tasks' in data.game_data) || data.game_data.tasks is map)
+          (!('tasks' in data.game_data) || data.game_data.tasks is map) &&
+          (!('needs' in data.game_data) || data.game_data.needs is map)
         );
 
         return hasValidKeys && validUid && validEmail && validName && validTime && validGameData;
