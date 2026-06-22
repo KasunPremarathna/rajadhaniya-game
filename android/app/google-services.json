@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "999174467302-m3v18132b5qsbst9fu5lpq64cdealaqi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "ktec.rajadhaniya.com",
+            "certificate_hash": "4a09f73f22a24961acad66cce4dd0bb2374e1b7a"
+          }
+        },
+        {
           "client_id": "999174467302-psvhrhodk90t0kdlvh6d5lshepd8hd13.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

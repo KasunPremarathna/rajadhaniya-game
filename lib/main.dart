@@ -19,21 +19,41 @@ import 'package:flutter/foundation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await GameConfig.instance.loadConfig();
   
-  if (Firebase.apps.isEmpty) {
-    if (kIsWeb) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    } else {
-      await Firebase.initializeApp();
+  try {
+    await GameConfig.instance.loadConfig();
+    
+    if (Firebase.apps.isEmpty) {
+      if (kIsWeb) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      } else {
+        await Firebase.initializeApp();
+      }
     }
+    registerPhaserView();
+    final prefs = await SharedPreferences.getInstance();
+    final initialLang = prefs.getString('selected_language');
+    runApp(RajadhaniyaApp(initialLanguage: initialLang));
+  } catch (e, stackTrace) {
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          backgroundColor: Colors.black,
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'CRITICAL INITIALIZATION ERROR:\n$e\n\n$stackTrace',
+                style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
-  registerPhaserView();
-  final prefs = await SharedPreferences.getInstance();
-  final initialLang = prefs.getString('selected_language');
-  runApp(RajadhaniyaApp(initialLanguage: initialLang));
 }
 
 class RajadhaniyaApp extends StatefulWidget {

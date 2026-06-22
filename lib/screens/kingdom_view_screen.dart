@@ -22,6 +22,9 @@ class KingdomViewScreen extends StatefulWidget {
 class _KingdomViewScreenState extends State<KingdomViewScreen> {
   Map<String, dynamic>? _hudData;
   Timer? _cloudSyncTimer;
+  bool _isBuildConfirmVisible = false;
+  BuildContext? _contextualMenuContext;
+  BuildContext? _attackMenuContext;
 
   String _language = 'en';
 
@@ -140,6 +143,23 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           ),
         ),
       );
+    } else if (type == 'show_build_confirm') {
+      setState(() => _isBuildConfirmVisible = true);
+    } else if (type == 'close_build_confirm') {
+      setState(() => _isBuildConfirmVisible = false);
+    } else if (type == 'show_contextual_menu') {
+      _showContextualMenu(data);
+    } else if (type == 'close_contextual_menu') {
+      if (_contextualMenuContext != null && Navigator.canPop(_contextualMenuContext!)) {
+        Navigator.pop(_contextualMenuContext!);
+        _contextualMenuContext = null;
+      }
+    } else if (type == 'show_attack_menu') {
+      _showAttackMenu(data);
+    } else if (type == 'show_death_overlay') {
+      _showDeathOverlay();
+    } else if (type == 'show_era_completion') {
+      _showEraCompletion();
     }
   }
 
@@ -203,6 +223,15 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           Positioned.fill(
             child: _buildDashboard(),
           ),
+
+          // BUILD CONFIRM OVERLAY
+          if (_isBuildConfirmVisible)
+            Positioned(
+              bottom: 100,
+              left: 0,
+              right: 0,
+              child: _buildConfirmOverlay(),
+            ),
         ],
       ),
     );
@@ -263,6 +292,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                     alignment: Alignment.centerRight,
                     child: Row(
                       children: [
+                        _buildCircularButton(Icons.my_location, _translate('Find Player'), () {
+                          JsBridge.callJs('centerCameraOnPlayer', {});
+                        }),
+                        const SizedBox(width: 12),
                         _buildCircularButton(Icons.settings, _translate('Settings'), () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Settings coming soon!')),
@@ -891,6 +924,446 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // --- Flutter Popup Implementations ---
+
+  Widget _buildConfirmOverlay() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Confirm Button
+        GestureDetector(
+          onTap: () {
+            setState(() => _isBuildConfirmVisible = false);
+            JsBridge.callJs('flutterGameAction', {'action': 'confirm_build'});
+          },
+          child: Container(
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))],
+            ),
+            child: const Icon(Icons.check, color: Colors.white, size: 32),
+          ),
+        ),
+        const SizedBox(width: 32),
+        // Cancel Button
+        GestureDetector(
+          onTap: () {
+            setState(() => _isBuildConfirmVisible = false);
+            JsBridge.callJs('flutterGameAction', {'action': 'cancel_build'});
+          },
+          child: Container(
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              color: Colors.redAccent,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))],
+            ),
+            child: const Icon(Icons.close, color: Colors.white, size: 32),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showContextualMenu(Map<String, dynamic> data) {
+    if (_contextualMenuContext != null) {
+      Navigator.pop(_contextualMenuContext!);
+      _contextualMenuContext = null;
+    }
+
+    final resType = data['resType'];
+    final bool isBuilding = data['isBuilding'] ?? false;
+    final bool isHarvesting = data['isHarvesting'] ?? false;
+    final taskKey = data['taskKey'];
+    final tx = data['tx'];
+    final ty = data['ty'];
+    final cost = data['cost'] ?? 100;
+    final List<dynamic> yields = data['yields'] ?? [];
+
+    final labelMap = {
+      'tree': 'Tree', 'deer': 'Deer', 'gem_rock': 'Gem Rock', 'lake': 'Lake', 'fence': 'Fence', 
+      'border_tree': 'Dense Forest', 'house': 'House', 'farm': 'Farm', 'workers_hut': 'Workers Hut', 
+      'temple': 'Temple', 'boat_house': 'Boat House', 'cow_farm': 'Cow Farmer Hut', 
+      'lumber_camp': 'Lumber Camp', 'mine': 'Mine'
+    };
+    final labelMapSi = {
+      'tree': 'ගස', 'deer': 'මුවා', 'gem_rock': 'මැණික් ගල', 'lake': 'වැව', 'fence': 'වැට', 
+      'border_tree': 'ඝන කැලෑව', 'house': 'නිවස', 'farm': 'ගොවිපල', 'workers_hut': 'කම්කරු නිවස', 
+      'temple': 'පන්සල', 'boat_house': 'බෝට්ටු නිවස', 'cow_farm': 'එළදෙනුන් ගොවිපල', 
+      'lumber_camp': 'දැව කඳවුර', 'mine': 'පතල'
+    };
+
+    final title = _language == 'si' ? (labelMapSi[resType] ?? resType) : (labelMap[resType] ?? resType);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        _contextualMenuContext = ctx;
+        return PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (bool didPop, dynamic result) {
+            if (didPop) {
+              _contextualMenuContext = null;
+              JsBridge.callJs('flutterGameAction', {'action': 'close_menu'});
+            }
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1F1A17).withValues(alpha: 0.98),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD4AF37), width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const SizedBox(width: 24), // balance close button
+                    Text(
+                      title.toString().toUpperCase(),
+                      style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _contextualMenuContext = null;
+                        JsBridge.callJs('flutterGameAction', {'action': 'close_menu'});
+                      },
+                    )
+                  ],
+                ),
+                const Divider(color: Color(0xFFD4AF37)),
+                const SizedBox(height: 8),
+
+                // Content
+                if (resType == 'border_tree') ...[
+                  Text(
+                    _language == 'si' ? 'භූමිය පුළුල් කරන්නද?' : 'Expand Territory?',
+                    style: const TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _language == 'si' ? 'මිල: $cost 🪙' : 'Cost: $cost 🪙',
+                    style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF8B4513),
+                      side: const BorderSide(color: Color(0xFFD4AF37)),
+                      minimumSize: const Size(double.infinity, 44),
+                    ),
+                    icon: const Icon(Icons.cleaning_services, color: Colors.white),
+                    label: Text(_language == 'si' ? 'කැලෑව කපන්න' : 'Clear Forest', style: const TextStyle(color: Colors.white)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _contextualMenuContext = null;
+                      JsBridge.callJs('flutterGameAction', {'action': 'clear_border', 'tx': tx, 'ty': ty, 'cost': cost});
+                    },
+                  )
+                ] else if (resType == 'fence') ...[
+                  Text(
+                    _language == 'si' ? 'අස්වැන්න: +1 🪵' : 'Yield: +1 🪵',
+                    style: const TextStyle(color: Colors.green, fontSize: 15),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[800],
+                      side: const BorderSide(color: Colors.redAccent),
+                      minimumSize: const Size(double.infinity, 44),
+                    ),
+                    icon: const Icon(Icons.delete, color: Colors.white),
+                    label: Text(_translate('Remove'), style: const TextStyle(color: Colors.white)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _contextualMenuContext = null;
+                      JsBridge.callJs('flutterGameAction', {'action': 'remove_building', 'tx': tx, 'ty': ty});
+                    },
+                  )
+                ] else ...[
+                  if (yields.isNotEmpty) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_language == 'si' ? '⏱️ කාලය:' : '⏱️ Time:', style: const TextStyle(color: Colors.white70)),
+                        const Text('10s', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_language == 'si' ? '🎁 අස්වැන්න:' : '🎁 Yield:', style: const TextStyle(color: Colors.white70)),
+                        Text(yields.join('  '), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  if (!isHarvesting) ...[
+                    if (resType == 'lake' || !isBuilding)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[800],
+                          side: const BorderSide(color: Colors.lightGreen),
+                          minimumSize: const Size(double.infinity, 44),
+                        ),
+                        icon: const Icon(Icons.agriculture, color: Colors.white),
+                        label: Text(_language == 'si' ? 'අස්වනු නෙලන්න' : 'Start Harvest', style: const TextStyle(color: Colors.white)),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _contextualMenuContext = null;
+                          JsBridge.callJs('flutterGameAction', {'action': 'start_harvest', 'tx': tx, 'ty': ty, 'taskKey': taskKey});
+                        },
+                      )
+                    else
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber[800],
+                          side: const BorderSide(color: Colors.amberAccent),
+                          minimumSize: const Size(double.infinity, 44),
+                        ),
+                        icon: const Icon(Icons.flash_on, color: Colors.black),
+                        label: Text(_language == 'si' ? '50 රත්‍රන්' : '50 Gold Boost', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _contextualMenuContext = null;
+                          JsBridge.callJs('flutterGameAction', {'action': 'boost_harvest', 'tx': tx, 'ty': ty, 'taskKey': taskKey});
+                        },
+                      ),
+                  ],
+
+                  // Needs Actions
+                  const SizedBox(height: 12),
+                  if (resType == 'farm' || resType == 'deer')
+                    _buildNeedsButton('🍔', _language == 'si' ? 'ආහාර ගන්න' : 'Eat Food', () {
+                      JsBridge.callJs('flutterGameAction', {'action': 'feed_player', 'amount': 40});
+                    }),
+                  if (resType == 'lake') ...[
+                    Row(
+                      children: [
+                        Expanded(child: _buildNeedsButton('💧', _language == 'si' ? 'බොන්න' : 'Drink', () {
+                          JsBridge.callJs('flutterGameAction', {'action': 'hydrate_player', 'amount': 30});
+                        })),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNeedsButton('🧼', _language == 'si' ? 'නාන්න' : 'Bathe', () {
+                          JsBridge.callJs('flutterGameAction', {'action': 'clean_player', 'amount': 50});
+                        })),
+                      ],
+                    )
+                  ],
+                  if (resType == 'house' || resType == 'workers_hut' || resType == 'tree')
+                    _buildNeedsButton('🚽', _language == 'si' ? 'වැසිකිළිය' : 'Use Toilet', () {
+                      JsBridge.callJs('flutterGameAction', {'action': 'toilet_player'});
+                    }),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNeedsButton(String icon, String label, VoidCallback onTap) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF005A9C),
+        side: const BorderSide(color: Colors.lightBlue),
+        minimumSize: const Size(double.infinity, 36),
+      ),
+      onPressed: () {
+        if (_contextualMenuContext != null) {
+          Navigator.pop(_contextualMenuContext!);
+          _contextualMenuContext = null;
+        }
+        onTap();
+      },
+      child: Text('$icon $label', style: const TextStyle(color: Colors.white, fontSize: 13)),
+    );
+  }
+
+  void _showAttackMenu(Map<String, dynamic> data) {
+    if (_attackMenuContext != null) {
+      Navigator.pop(_attackMenuContext!);
+      _attackMenuContext = null;
+    }
+
+    final String name = data['kingdomName'] ?? 'Enemy';
+    final int level = data['level'] ?? 1;
+    final int gold = data['gold'] ?? 0;
+    final int loot = (gold * 0.4).floor();
+    final tx = data['tx'];
+    final ty = data['ty'];
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        _attackMenuContext = ctx;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A0505).withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.redAccent, width: 2),
+              boxShadow: [BoxShadow(color: Colors.redAccent.withValues(alpha: 0.3), blurRadius: 20)],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '⚔️ RAID — $name',
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '🏆 Level $level   |   🪙 ~$loot Gold loot',
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[800],
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _attackMenuContext = null;
+                    JsBridge.callJs('flutterGameAction', {'action': 'execute_attack', 'tx': tx, 'ty': ty});
+                  },
+                  child: const Text('⚔️ ATTACK NOW', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _attackMenuContext = null;
+                  },
+                  child: const Text('✖ Cancel', style: TextStyle(color: Colors.white54)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeathOverlay() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        return PopScope(
+          canPop: false, // Prevent dismissing
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _language == 'si' ? 'අධික වෙහෙස නිසා ඔබ මිය ගියේය.' : 'You have perished from exhaustion.',
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    side: const BorderSide(color: Colors.greenAccent),
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    JsBridge.callJs('flutterGameAction', {'action': 'respawn'});
+                  },
+                  child: Text(_language == 'si' ? '[ නැවත ඉපදෙන්න ]' : '[ RESPAWN ]', style: const TextStyle(color: Colors.greenAccent, fontSize: 20, letterSpacing: 2.0)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEraCompletion() {
+    final titleText = _language == 'si' ? 'යුගය ජයග්‍රහණය කරන ලදී!' : 'Era Completed!';
+    final subText = _language == 'si' ? 'යුගය සම්පූර්ණයි!' : 'You have completed all objectives for this era.';
+    final btnString = _language == 'si' ? '📦 සිතියමට යන්න' : '📦 Return to Map';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E2A38).withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFD4AF37), width: 3),
+              boxShadow: [BoxShadow(color: const Color(0xFFD4AF37).withValues(alpha: 0.3), blurRadius: 30)],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.emoji_events, color: Color(0xFFD4AF37), size: 64),
+                const SizedBox(height: 16),
+                Text(
+                  titleText,
+                  style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 22, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  subText,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4AF37),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    JsBridge.showFlutterUi();
+                  },
+                  child: Text(btnString, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

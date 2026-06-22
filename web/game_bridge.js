@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.40';
+  var GAME_ASSET_VERSION = 'v1.3.44';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -42,6 +42,9 @@
   var radialMenuElements = null;
   var isMoving = false;
   var isMenuOpen = false;
+  var activeFenceOverlay = null;
+  var selectedUnit = null;
+  var selectionRing = null;
   /* CoC Map Globals */
   var BORDER = 40;
   var FOG_RADIUS = 32;
@@ -206,6 +209,45 @@
         storedVersion: stored || 'none',
         expectedVersion: GAME_ASSET_VERSION,
       });
+    }
+  };
+
+  window.flutterGameAction = function (payloadStr) {
+    if (!phaserInstance || !window.__gameActive) return;
+    try {
+      var payload = JSON.parse(payloadStr);
+      var scene = phaserInstance.scene.scenes[0];
+      if (!scene) return;
+
+      if (payload.action === 'confirm_build') {
+        if (typeof scene._confirmBuild === 'function') scene._confirmBuild();
+      } else if (payload.action === 'cancel_build') {
+        if (typeof scene._cancelBuild === 'function') scene._cancelBuild();
+      } else if (payload.action === 'start_harvest') {
+        if (typeof scene._startHarvest === 'function') scene._startHarvest(payload.tx, payload.ty, payload.taskKey);
+      } else if (payload.action === 'boost_harvest') {
+        if (typeof scene._boostHarvest === 'function') scene._boostHarvest(payload.tx, payload.ty, payload.taskKey);
+      } else if (payload.action === 'remove_building') {
+        if (typeof scene._removeBuilding === 'function') scene._removeBuilding(payload.tx, payload.ty);
+      } else if (payload.action === 'clear_border') {
+        if (typeof scene._clearBorderTree === 'function') scene._clearBorderTree(payload.tx, payload.ty, payload.cost);
+      } else if (payload.action === 'execute_attack') {
+        if (typeof scene._executeAttack === 'function') scene._executeAttack(payload.tx, payload.ty);
+      } else if (payload.action === 'respawn') {
+        if (typeof scene._respawn === 'function') scene._respawn();
+      } else if (payload.action === 'feed_player') {
+         if (typeof scene._feedPlayer === 'function') scene._feedPlayer(payload.amount);
+      } else if (payload.action === 'hydrate_player') {
+         if (typeof scene._hydratePlayer === 'function') scene._hydratePlayer(payload.amount);
+      } else if (payload.action === 'clean_player') {
+         if (typeof scene._cleanPlayer === 'function') scene._cleanPlayer(payload.amount);
+      } else if (payload.action === 'toilet_player') {
+         if (typeof scene._toiletPlayer === 'function') scene._toiletPlayer();
+      } else if (payload.action === 'close_menu') {
+         isMenuOpen = false;
+      }
+    } catch (e) {
+      console.error('[Bridge] Failed to parse flutterGameAction payload:', e);
     }
   };
 
@@ -562,7 +604,7 @@
          loadingAudio.play();
       }
 
-      var grace = 10000, elapsed = 0, isFading = false;
+      var grace = 100, elapsed = 0, isFading = false;
       var loaderTimer = scene.time.addEvent({
         delay: 50,
         repeat: 199,
@@ -673,8 +715,19 @@
       scene._playerShadow = scene.add.image(spX, spY, 'shadow').setAlpha(0.3).setDepth(pTile.tx + pTile.ty + 0.1);
       playerSprite = scene.add.sprite(spX, spY, 'player').setDepth(pTile.tx + pTile.ty + 1).setOrigin(0.5, 0.8).setScale(0.25);
       
-      scene.cameras.main.startFollow(playerSprite, true, 0.1, 0.1);
+      scene.cameras.main.centerOn(spX, spY);
       scene.cameras.main.setZoom(1.2);
+      
+      window.centerCameraOnPlayer = function() {
+        if (!window.__gameActive || !scene || !scene.cameras || !playerSprite) return;
+        scene.tweens.add({
+          targets: scene.cameras.main,
+          scrollX: playerSprite.x - scene.cameras.main.width / 2,
+          scrollY: playerSprite.y - scene.cameras.main.height / 2,
+          duration: 400,
+          ease: 'Sine.easeInOut'
+        });
+      };
       scene.cameras.main.setBackgroundColor('#689f38');
       
       var cx = ox;
@@ -759,6 +812,10 @@
             scene.cameras.main.setZoom(Phaser.Math.Clamp(newZoom, 0.6, 2.0));
           }
           return;
+        } else if (ptr.isDown && !currentBuildMode && !editMode) {
+          // Pan camera
+          scene.cameras.main.scrollX -= (ptr.x - ptr.prevPosition.x) / scene.cameras.main.zoom;
+          scene.cameras.main.scrollY -= (ptr.y - ptr.prevPosition.y) / scene.cameras.main.zoom;
         } else {
           pinchState.pinching = false;
         }
@@ -774,8 +831,39 @@
           updateEditGhost(scene, tile2.tx, tile2.ty, ox, oy);
         }
       });
+      var pointerDownX = 0;
+      var pointerDownY = 0;
+
       scene.input.on('pointerdown', function (ptr) {
+        pointerDownX = ptr.x;
+        pointerDownY = ptr.y;
         if (scene.input.pointer1.isDown && scene.input.pointer2.isDown) return;
+
+        // Long-press detection for building drag-and-drop
+        longPressPtr = ptr;
+        longPressTimer = scene.time.delayedCall(500, function() {
+          if (!longPressPtr) return;
+          var wp = scene.cameras.main.getWorldPoint(longPressPtr.x, longPressPtr.y);
+          var tile = worldToTile(wp.x, wp.y, ox, oy);
+          for (var bi = 0; bi < scene._buildings.length; bi++) {
+            var b = scene._buildings[bi];
+            if (tile.tx >= b.tx && tile.tx < b.tx + b.w && tile.ty >= b.ty && tile.ty < b.ty + b.h) {
+              enterEditMode(scene, b, ox, oy);
+              return;
+            }
+          }
+        });
+      });
+
+      scene.input.on('pointerup', function (ptr) {
+        if (longPressTimer) { longPressTimer.remove(false); longPressTimer = null; }
+        longPressPtr = null;
+
+        // Ignore if this was a drag (moved more than 10 pixels)
+        var distMoved = Phaser.Math.Distance.Between(pointerDownX, pointerDownY, ptr.x, ptr.y);
+        if (distMoved > 10) return;
+
+        if (scene.input.pointer1.isDown || scene.input.pointer2.isDown) return;
 
         // If in edit/drag mode, confirm placement on tap
         if (editMode && editGhost) {
@@ -804,21 +892,6 @@
           closeContextualMenu(scene);
           return; // don't re-open on same tap
         }
-
-        // Long-press detection for building drag-and-drop
-        longPressPtr = ptr;
-        longPressTimer = scene.time.delayedCall(500, function() {
-          if (!longPressPtr) return;
-          var wp = scene.cameras.main.getWorldPoint(longPressPtr.x, longPressPtr.y);
-          var tile = worldToTile(wp.x, wp.y, ox, oy);
-          for (var bi = 0; bi < scene._buildings.length; bi++) {
-            var b = scene._buildings[bi];
-            if (tile.tx >= b.tx && tile.tx < b.tx + b.w && tile.ty >= b.ty && tile.ty < b.ty + b.h) {
-              enterEditMode(scene, b, ox, oy);
-              return;
-            }
-          }
-        });
 
         var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
         var tile = worldToTile(wp.x, wp.y, ox, oy);
@@ -859,9 +932,74 @@
           }
         }
 
+        // Check if player tapped the player character
+        var pTile = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
+        var distToPlayer = Math.abs(tile.tx - pTile.tx) + Math.abs(tile.ty - pTile.ty);
+        
+        if (distToPlayer <= 2) {
+          if (selectedUnit === playerSprite) {
+            // Deselect
+            selectedUnit = null;
+            if (selectionRing) selectionRing.setVisible(false);
+            floatText(scene, window.gameLanguage === 'si' ? 'අවලංගුයි' : 'Deselected', playerSprite.x, playerSprite.y - 40, '#FF4444');
+          } else {
+            // Select
+            selectedUnit = playerSprite;
+            if (!selectionRing) {
+              selectionRing = scene.add.graphics().setDepth(2000);
+              selectionRing.lineStyle(3, 0x00FF00, 0.8);
+              selectionRing.strokeEllipse(0, 0, 48, 24);
+              scene.tweens.add({
+                targets: selectionRing,
+                scaleX: 1.2, scaleY: 1.2, alpha: 0.5,
+                yoyo: true, repeat: -1, duration: 800
+              });
+            }
+            selectionRing.setPosition(playerSprite.x, playerSprite.y);
+            selectionRing.setVisible(true);
+            floatText(scene, window.gameLanguage === 'si' ? 'තේරුවා' : 'Selected', playerSprite.x, playerSprite.y - 40, '#00FF00');
+          }
+          return;
+        }
+
+        // Allow instantly inspecting buildings without needing a selected unit or walking to it
+        if (clickedRes && clickedRes.isBuilding) {
+          if (clickedRes.type === 'fence') {
+            if (isMenuOpen) closeContextualMenu(scene);
+            showFenceEditOverlay(scene, clickedRes, ox, oy);
+          } else {
+            if (activeFenceOverlay) { activeFenceOverlay.destroy(); activeFenceOverlay = null; }
+            if (isMenuOpen) closeContextualMenu(scene);
+            createContextualMenu(scene, clickedRes);
+          }
+          return;
+        }
+
+        // Clicked elsewhere - clean up fence overlay
+        if (activeFenceOverlay) { activeFenceOverlay.destroy(); activeFenceOverlay = null; }
+
+        // If no unit selected, but tapped a resource, open menu to inspect
+        if (clickedRes && !selectedUnit) {
+          if (isMenuOpen) closeContextualMenu(scene);
+          createContextualMenu(scene, clickedRes);
+          return;
+        }
+
+        if (!selectedUnit) {
+          // If no unit selected, tap does nothing
+          if (selectionRing) selectionRing.setVisible(false);
+          return; 
+        }
+
+        // --- At this point, we have a selected unit ---
+        if (selectedUnit._harvestTimer) {
+          selectedUnit._harvestTimer.remove(false);
+          selectedUnit._harvestTimer = null;
+          selectedUnit.stop();
+        }
+
         if (clickedRes) {
           if (isMoving) return;
-          var pTile = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
           
           var tRect = null;
           if (clickedRes.isBuilding && clickedRes.buildingData) {
@@ -875,12 +1013,12 @@
           var dx = Math.max(tRect.tx - pTile.tx, 0, pTile.tx - (tRect.tx + tRect.w - 1));
           var dy = Math.max(tRect.ty - pTile.ty, 0, pTile.ty - (tRect.ty + tRect.h - 1));
           
-          if (dx + dy <= 2) { // 2 allows reaching it diagonally or slightly adjacent
-            createContextualMenu(scene, clickedRes);
+          if (dx + dy <= 2) { 
+            startAutomatedHarvest(scene, selectedUnit, clickedRes, ox, oy);
           } else {
             movePlayerToTile(scene, 0, 0, ox, oy, tRect, function(success) {
               if (success) {
-                createContextualMenu(scene, clickedRes);
+                startAutomatedHarvest(scene, selectedUnit, clickedRes, ox, oy);
               }
             });
           }
@@ -888,12 +1026,6 @@
         }
 
         handleSingleTap(scene, ptr, ox, oy);
-      });
-
-      // Cancel long-press if finger lifts quickly (it was a tap, not a hold)
-      scene.input.on('pointerup', function(ptr) {
-        if (longPressTimer) { longPressTimer.remove(false); longPressTimer = null; }
-        longPressPtr = null;
       });
 
       function updateNeedsBubble(scene, sprite, needsData) {
@@ -922,24 +1054,18 @@
       function showDeathOverlay() {
         if (window.__isDead) return;
         window.__isDead = true;
-        var cx = scene.cameras.main.scrollX + scene.cameras.main.width / 2;
-        var cy = scene.cameras.main.scrollY + scene.cameras.main.height / 2;
-        
-        var bg = scene.add.graphics().setDepth(5000);
-        bg.fillStyle(0x000000, 0.8);
-        bg.fillRect(scene.cameras.main.scrollX, scene.cameras.main.scrollY, scene.cameras.main.width, scene.cameras.main.height);
 
-        var txt = scene.add.text(cx, cy - 50, 'You have perished from exhaustion.', { fontFamily: 'monospace', fontSize: '24px', color: '#ff4444' }).setOrigin(0.5).setDepth(5001);
-        
-        var btn = scene.add.text(cx, cy + 30, '[ RESPAWN ]', { fontFamily: 'monospace', fontSize: '28px', color: '#44ff44', backgroundColor: '#222', padding: { x: 10, y: 5 } }).setOrigin(0.5).setDepth(5001).setInteractive();
-        btn.on('pointerdown', function() {
+        window.notifyFlutter({
+          type: 'show_death_overlay'
+        });
+
+        scene._respawn = function() {
           window.__isDead = false;
           localPlayerData.health = 100;
           localPlayerData.needs.hunger = 100;
           localPlayerData.needs.thirst = 100;
-          bg.destroy(); txt.destroy(); btn.destroy();
           refreshHud(scene);
-        });
+        };
       }
 
       scene.events.on('update', function() {
@@ -1034,53 +1160,27 @@
     }
 
     function showBuildConfirmUI(scene) {
-      closeBuildConfirmUI();
       if (!ghostBuilding) return;
+      
+      // Notify Flutter to show the build confirmation overlay
+      window.notifyFlutter({
+        type: 'show_build_confirm'
+      });
 
-      var cx = ghostBuilding.x;
-      var cy = ghostBuilding.y - 60; // floating above building
-      var elems = [];
-
-      // ✅ Confirm Button
-      var btnOk = scene.add.graphics().setDepth(2000);
-      btnOk.fillStyle(0x4CAF50, 1);
-      btnOk.fillRoundedRect(cx - 50, cy - 20, 40, 40, 20);
-      elems.push(btnOk);
-
-      var txtOk = scene.add.text(cx - 30, cy, '\u2714', { fontSize: '20px', color: '#FFF' }).setOrigin(0.5).setDepth(2001);
-      elems.push(txtOk);
-
-      var zoneOk = scene.add.zone(cx - 30, cy, 40, 40).setDepth(2002).setInteractive({ useHandCursor: true });
-      zoneOk.on('pointerdown', function(ptr, localX, localY, ev) {
-        ev.stopPropagation(); // Block from hitting grid
+      // Bind callbacks for Flutter to call
+      scene._confirmBuild = function() {
         confirmBuild(scene);
-      });
-      elems.push(zoneOk);
-
-      // ❌ Cancel Button
-      var btnNo = scene.add.graphics().setDepth(2000);
-      btnNo.fillStyle(0xFF6B6B, 1);
-      btnNo.fillRoundedRect(cx + 10, cy - 20, 40, 40, 20);
-      elems.push(btnNo);
-
-      var txtNo = scene.add.text(cx + 30, cy, '\u2715', { fontSize: '20px', color: '#FFF' }).setOrigin(0.5).setDepth(2001);
-      elems.push(txtNo);
-
-      var zoneNo = scene.add.zone(cx + 30, cy, 40, 40).setDepth(2002).setInteractive({ useHandCursor: true });
-      zoneNo.on('pointerdown', function(ptr, localX, localY, ev) {
-        ev.stopPropagation(); // Block from hitting grid
+      };
+      
+      scene._cancelBuild = function() {
         cancelBuild(scene);
-      });
-      elems.push(zoneNo);
-
-      buildConfirmElements = elems;
+      };
     }
 
     function closeBuildConfirmUI() {
-      if (buildConfirmElements) {
-        buildConfirmElements.forEach(function (el) { if (el && el.destroy) el.destroy(); });
-        buildConfirmElements = null;
-      }
+      window.notifyFlutter({
+        type: 'close_build_confirm'
+      });
     }
 
     function confirmBuild(scene) {
@@ -1289,7 +1389,7 @@
           } else {
             spr = scene.add.image(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
             spr.setScale(cfg.type === 'tree' ? 0.25 : 0.06);
-            resourceSprites.push({ type: cfg.type, sprite: spr, shadow: shad, tileX: tx, tileY: ty });
+            resourceSprites.push({ type: cfg.type, sprite: spr, shadow: shad, tileX: tx, tileY: ty, maxYield: 50, currentYield: 50 });
 
             if (cfg.type !== 'tree') {
               scene.tweens.add({
@@ -1461,46 +1561,22 @@
         return;
       }
       closeContextualMenu(scene);
-      var W = scene.cameras.main.width;
-      var H = scene.cameras.main.height;
-      var cx = W / 2; var cy = H / 2;
-      var elems = [];
-
-      var bg = scene.add.graphics().setScrollFactor(0).setDepth(500);
-      bg.fillStyle(0x1a0505, 0.93);
-      bg.fillRoundedRect(cx - 135, cy - 85, 270, 170, 14);
-      bg.lineStyle(2, 0xCC2222, 1);
-      bg.strokeRoundedRect(cx - 135, cy - 85, 270, 170, 14);
-      elems.push(bg);
-
-      elems.push(scene.add.text(cx, cy - 68, '\u2694\ufe0f  RAID  \u2014  ' + kingdom.name, {
-        fontFamily: 'monospace', fontSize: '11px', color: '#FF6B6B', fontStyle: 'bold'
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(501));
-
-      elems.push(scene.add.text(cx, cy - 44,
-        '\ud83c\udfc6 Level ' + kingdom.level + '   |   \ud83e\ude99 ~' + Math.floor(kingdom.gold * 0.4) + ' Gold loot', {
-        fontFamily: 'monospace', fontSize: '10px', color: '#FFFFFF'
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(501));
-
-      var atkBg = scene.add.graphics().setScrollFactor(0).setDepth(501);
-      atkBg.fillStyle(0xCC0000, 1); atkBg.fillRoundedRect(cx - 85, cy - 18, 170, 36, 8);
-      elems.push(atkBg);
-      elems.push(scene.add.text(cx, cy + 0, '\u2694\ufe0f  ATTACK NOW', {
-        fontFamily: 'monospace', fontSize: '12px', color: '#FFF', fontStyle: 'bold'
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(502));
-
-      var atkZ = scene.add.zone(cx, cy, 170, 36).setScrollFactor(0).setDepth(503).setInteractive({ useHandCursor: true });
-      atkZ.on('pointerdown', function() {
-        elems.forEach(function(e) { if (e && e.destroy) e.destroy(); });
-        executeAttack(scene, kingdom);
+      
+      // Notify Flutter
+      window.notifyFlutter({
+        type: 'show_attack_menu',
+        kingdomName: kingdom.name,
+        level: kingdom.level,
+        gold: kingdom.gold,
+        tx: kingdom.tx,
+        ty: kingdom.ty
       });
-      elems.push(atkZ);
 
-      var cancelT = scene.add.text(cx, cy + 50, '\u2715 Cancel', {
-        fontFamily: 'monospace', fontSize: '10px', color: '#AAAAAA'
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(502).setInteractive({ useHandCursor: true });
-      cancelT.on('pointerdown', function() { elems.forEach(function(e) { if (e && e.destroy) e.destroy(); }); });
-      elems.push(cancelT);
+      scene._executeAttack = function(tx, ty) {
+        if (kingdom.tx === tx && kingdom.ty === ty) {
+          executeAttack(scene, kingdom);
+        }
+      };
     }
 
     function executeAttack(scene, kingdom) {
@@ -1598,6 +1674,12 @@
           x: pos.x, y: pos.y,
           duration: 30,
           ease: 'Linear',
+          onUpdate: function() {
+            if (selectionRing && selectedUnit === playerSprite) {
+              selectionRing.setPosition(playerSprite.x, playerSprite.y);
+              selectionRing.setDepth(playerSprite.depth - 0.5);
+            }
+          },
           onComplete: function () { idx++; nextStep(); },
         });
       }
@@ -1661,286 +1743,270 @@
        ────────────────────────────────────────────── */
     function createContextualMenu(scene, res) {
       closeContextualMenu(scene);
-      
-      var cx = res.sprite.x;
-      var cy = res.sprite.y - 140;
-      var elems = [];
-      
-      function addNeedsButton(s, px, py, elArr, label, callback, width) {
-        var w = width || 160;
-        var btn = s.add.graphics().setDepth(201);
-        btn.fillStyle(0x005A9C, 1);
-        btn.fillRoundedRect(px - w/2, py - 20, w, 40, 8);
-        btn.lineStyle(2, 0x3399FF, 1);
-        btn.strokeRoundedRect(px - w/2, py - 20, w, 40, 8);
-        elArr.push(btn);
-        var txt = s.add.text(px, py, label, { fontFamily: 'monospace', fontSize: '13px', color: '#FFF', fontStyle: 'bold' }).setOrigin(0.5).setDepth(202);
-        elArr.push(txt);
-        var z = s.add.zone(px, py, w, 40).setDepth(203).setInteractive({ useHandCursor: true });
-        z.on('pointerdown', function(ptr, localX, localY, ev) {
-          if (ev) ev.stopPropagation(); if (ptr.event) ptr.event.stopPropagation();
-          closeContextualMenu(s); callback();
-        });
-        elArr.push(z);
-      }
+      isMenuOpen = true;
 
-      // 1. Draw a shadow for depth
-      var shadow = scene.add.graphics().setDepth(199);
-      shadow.fillStyle(0x000000, 0.5);
-      shadow.fillRoundedRect(cx - 105, cy - 95, 220, 230, 12);
-      elems.push(shadow);
-
-      // 2. Main Background Box
-      var bg = scene.add.graphics().setDepth(200);
-      bg.fillStyle(0x1F1A17, 0.98); // Dark rich brown background
-      bg.fillRoundedRect(cx - 110, cy - 100, 220, 230, 12);
-      bg.lineStyle(2, 0xD4AF37, 1); // Gold border
-      bg.strokeRoundedRect(cx - 110, cy - 100, 220, 230, 12);
-      elems.push(bg);
-
-      // 3. Title Banner Background
-      var banner = scene.add.graphics().setDepth(200);
-      banner.fillStyle(0x2D241C, 1);
-      banner.fillRoundedRect(cx - 108, cy - 98, 216, 40, { tl: 10, tr: 10, bl: 0, br: 0 });
-      // Separator line
-      banner.lineStyle(1, 0xD4AF37, 0.5);
-      banner.beginPath();
-      banner.moveTo(cx - 110, cy - 58);
-      banner.lineTo(cx + 110, cy - 58);
-      banner.strokePath();
-      elems.push(banner);
-
-      var labelMap = { tree: 'Tree', deer: 'Deer', gem_rock: 'Gem Rock', lake: 'Lake', fence: 'Fence', border_tree: 'Dense Forest', house: 'House', farm: 'Farm', workers_hut: 'Workers Hut', temple: 'Temple', boat_house: 'Boat House', cow_farm: 'Cow Farmer Hut', lumber_camp: 'Lumber Camp', mine: 'Mine' };
-      var labelMapSi = { tree: 'ගස', deer: 'මුවා', gem_rock: 'මැණික් ගල', lake: 'වැව', fence: 'වැට', border_tree: 'ඝන කැලෑව', house: 'නිවස', farm: 'ගොවිපල', workers_hut: 'කම්කරු නිවස', temple: 'පන්සල', boat_house: 'බෝට්ටු නිවස', cow_farm: 'එළදෙනුන් ගොවිපල', lumber_camp: 'දැව කඳවුර', mine: 'පතල' };
       var taskMap = { tree: 'wood', deer: 'hunting', gem_rock: 'gem', lake: 'fish', fence: 'fence' };
       var taskKey = taskMap[res.type];
-      var cfg = TASKS_CONFIG[taskKey];
+      var cfg = TASKS_CONFIG[taskKey] || {};
 
-      // 4. Title Text (Centered in Banner)
-      var displayLabel = window.gameLanguage === 'si' ? labelMapSi[res.type] : labelMap[res.type];
-      var title = scene.add.text(cx, cy - 78, displayLabel, {
-        fontFamily: 'monospace', fontSize: '18px', color: '#FFD700', fontStyle: 'bold'
-      }).setOrigin(0.5).setDepth(201);
-      elems.push(title);
+      var tx = (res.isBuilding && res.buildingData) ? res.buildingData.tx : ((res.sprite && res.sprite._tileX !== undefined) ? res.sprite._tileX : res.tileX);
+      var ty = (res.isBuilding && res.buildingData) ? res.buildingData.ty : ((res.sprite && res.sprite._tileY !== undefined) ? res.sprite._tileY : res.tileY);
 
-      // 5. Close (X) Button
-      var closeBtn = scene.add.text(cx + 90, cy - 88, '✖', {
-        fontFamily: 'sans-serif', fontSize: '18px', color: '#AAAAAA'
-      }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
-      closeBtn.on('pointerover', function() { closeBtn.setColor('#FFFFFF'); });
-      closeBtn.on('pointerout', function() { closeBtn.setColor('#AAAAAA'); });
-      closeBtn.on('pointerdown', function(ptr, localX, localY, ev) {
-        if (ev) ev.stopPropagation();
-        if (ptr.event) ptr.event.stopPropagation();
-        closeContextualMenu(scene);
+      var yields = [];
+      if (cfg && cfg.icon) yields.push('1 ' + cfg.icon);
+      if (res.type === 'gem_rock') yields.push('30 🪙');
+      if (res.type === 'deer') { yields.push('10 🪙'); yields.push('2 🥩'); }
+      if (res.type === 'tree') yields.push('5 🪙');
+      if (res.type === 'lake') { yields.push('15 🪙'); yields.push('1 🥩'); }
+
+      window.notifyFlutter({
+        type: 'show_contextual_menu',
+        resType: res.type,
+        isHarvesting: res.isHarvesting,
+        isBuilding: res.isBuilding,
+        taskKey: taskKey,
+        tx: tx,
+        ty: ty,
+        yields: yields,
+        cost: GLOBAL_CONFIG.treeClearCost || 100
       });
-      elems.push(closeBtn);
 
-      // 6. Production Details (Grid Layout)
-      var isSi = (window.gameLanguage === 'si');
-      
-      if (res.type === 'border_tree') {
-        var cost = GLOBAL_CONFIG.treeClearCost || 100;
-        var qText = isSi ? 'භූමිය පුළුල් කරන්නද?' : 'Expand Territory?';
-        var costText = isSi ? `මිල: ${cost} 🪙` : `Cost: ${cost} 🪙`;
+      scene._startHarvest = function(tX, tY, tKey) {
+        if (tX === tx && tY === ty) {
+          if (res.isBuilding) {
+            res.isHarvesting = true;
+            playHarvestEffect(scene, res.sprite.x, res.sprite.y + 40, 'spark');
+            setTimeout(function() { 
+              res.isHarvesting = false;
+              taskProgress[tKey] = (taskProgress[tKey] || 0) + 1;
+              refreshHud(scene);
+            }, 1000);
+          } else {
+            startHarvest(scene, res, tKey);
+          }
+        }
+      };
 
-        var qLabel = scene.add.text(cx, cy - 35, qText, {
-          fontFamily: 'monospace', fontSize: '15px', color: '#CCCCCC', align: 'center'
-        }).setOrigin(0.5).setDepth(201);
-        elems.push(qLabel);
+      scene._boostHarvest = function(tX, tY, tKey) {
+        if (tX === tx && tY === ty) {
+          boostHarvest(scene, res, tKey);
+        }
+      };
 
-        var cLabel = scene.add.text(cx, cy - 10, costText, {
-          fontFamily: 'monospace', fontSize: '16px', color: '#FFD700', fontStyle: 'bold', align: 'center'
-        }).setOrigin(0.5).setDepth(201);
-        elems.push(cLabel);
-
-      } else if (res.type === 'fence') {
-        var yieldLabel = scene.add.text(cx, cy - 20, isSi ? 'අස්වැන්න: +1 🪵' : 'Yield: +1 🪵', {
-          fontFamily: 'monospace', fontSize: '15px', color: '#4CAF50', align: 'center'
-        }).setOrigin(0.5).setDepth(201);
-        elems.push(yieldLabel);
-      } else {
-        // Time Row
-        var timeLabel = scene.add.text(cx - 90, cy - 40, isSi ? '⏱️ කාලය:' : '⏱️ Time:', {
-          fontFamily: 'monospace', fontSize: '14px', color: '#CCCCCC'
-        }).setOrigin(0, 0.5).setDepth(201);
-        elems.push(timeLabel);
-
-        var timeVal = scene.add.text(cx + 90, cy - 40, '10s', {
-          fontFamily: 'monospace', fontSize: '14px', color: '#FFF'
-        }).setOrigin(1, 0.5).setDepth(201);
-        elems.push(timeVal);
-
-        // Yield Row
-        var yieldText = scene.add.text(cx - 90, cy - 10, isSi ? '🎁 අස්වැන්න:' : '🎁 Yield:', {
-          fontFamily: 'monospace', fontSize: '14px', color: '#CCCCCC'
-        }).setOrigin(0, 0.5).setDepth(201);
-        elems.push(yieldText);
-
-        var yields = [];
-        if (cfg && cfg.icon) yields.push('1 ' + cfg.icon);
-        if (res.type === 'gem_rock') yields.push('30 🪙');
-        if (res.type === 'deer') { yields.push('10 🪙'); yields.push('2 🥩'); }
-        if (res.type === 'tree') yields.push('5 🪙');
-        if (res.type === 'lake') { yields.push('15 🪙'); yields.push('1 🥩'); }
-        
-        var yieldVal = scene.add.text(cx + 90, cy - 10, yields.join('  '), {
-          fontFamily: 'monospace', fontSize: '14px', color: '#4CAF50', fontStyle: 'bold'
-        }).setOrigin(1, 0.5).setDepth(201);
-        elems.push(yieldVal);
-      }
-
-      // 7. Action Button
-      var btnY = cy + 45;
-      if (res.type === 'fence') {
-        var btn = scene.add.graphics().setDepth(201);
-        btn.fillStyle(0xCC0000, 1);
-        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        btn.lineStyle(2, 0xFF6B6B, 1);
-        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        elems.push(btn);
-
-        var rmTxt = isSi ? '\u2715 ඉවත් කරන්න' : '\u2715 Remove';
-        var txt = scene.add.text(cx, btnY, rmTxt, {
-          fontFamily: 'monospace', fontSize: '16px', color: '#FFF', fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(202);
-        elems.push(txt);
-
-        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', function(ptr, localX, localY, ev) {
-          if (ev) ev.stopPropagation();
-          if (ptr.event) ptr.event.stopPropagation();
-          closeContextualMenu(scene);
+      scene._removeBuilding = function(tX, tY) {
+        if (tX === tx && tY === ty) {
           removeBuilding(scene, res.buildingData);
-        });
-        elems.push(zone);
+        }
+      };
 
-      } else if (res.type === 'border_tree') {
-        var cost = GLOBAL_CONFIG.treeClearCost || 100;
-        var btn = scene.add.graphics().setDepth(201);
-        btn.fillStyle(0x8B4513, 1);
-        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        btn.lineStyle(2, 0xD4AF37, 1);
-        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        elems.push(btn);
-
-        var clrTxt = isSi ? '\u2694\uFE0F කැලෑව කපන්න' : '\u2694\uFE0F Clear Forest';
-        var txt = scene.add.text(cx, btnY, clrTxt, {
-          fontFamily: 'monospace', fontSize: '15px', color: '#FFF', fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(202);
-        elems.push(txt);
-
-        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', function(ptr, localX, localY, ev) {
-          if (ev) ev.stopPropagation();
-          if (ptr.event) ptr.event.stopPropagation();
-          closeContextualMenu(scene);
+      scene._clearBorderTree = function(tX, tY, cost) {
+        if (tX === tx && tY === ty) {
           clearBorderTree(scene, res, cost);
-        });
-        elems.push(zone);
-
-      } else if (!res.isHarvesting) {
-        var canHarvest = (res.type === 'lake' || !res.isBuilding);
-        var currentBtnY = btnY;
-        
-        if (canHarvest) {
-          var btn = scene.add.graphics().setDepth(201);
-          btn.fillStyle(0x2E7D32, 1); // Dark green base
-          btn.fillRoundedRect(cx - 80, currentBtnY - 20, 160, 40, 8);
-          btn.lineStyle(2, 0x4CAF50, 1); // Bright green border
-          btn.strokeRoundedRect(cx - 80, currentBtnY - 20, 160, 40, 8);
-          elems.push(btn);
-
-          var harvestTxt = isSi ? 'අස්වනු නෙලන්න' : 'Start Harvest';
-          var iconStr = (cfg && cfg.icon ? cfg.icon : '⚒️') + ' ' + harvestTxt;
-          var txt = scene.add.text(cx, currentBtnY, iconStr, {
-            fontFamily: 'monospace', fontSize: '15px', color: '#FFF', fontStyle: 'bold'
-          }).setOrigin(0.5).setDepth(202);
-          elems.push(txt);
-
-          var zone = scene.add.zone(cx, currentBtnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
-          zone.on('pointerdown', function(ptr, localX, localY, ev) {
-            if (ev) ev.stopPropagation();
-            if (ptr.event) ptr.event.stopPropagation();
-            closeContextualMenu(scene);
-            if (res.isBuilding) {
-              res.isHarvesting = true;
-              playHarvestEffect(scene, cx, cy + 40, 'spark');
-              setTimeout(function() { 
-                res.isHarvesting = false;
-                taskProgress[taskKey] = (taskProgress[taskKey] || 0) + 1;
-                refreshHud(scene);
-              }, 1000);
-            } else {
-              startHarvest(scene, res, taskKey);
-            }
-          });
-          elems.push(zone);
         }
+      };
 
-        var needsBtnY = canHarvest ? currentBtnY + 45 : currentBtnY;
-        var rType = res.type;
-        if (rType === 'farm' || rType === 'deer') {
-          addNeedsButton(scene, cx, needsBtnY, elems, '🍔 ' + (isSi ? 'ආහාර ගන්න' : 'Eat Food'), function() {
-            localPlayerData.needs.hunger = Math.min(100, localPlayerData.needs.hunger + 40);
-            floatText(scene, '🍔 +40', cx, needsBtnY, '#4CAF50');
-            refreshHud(scene);
-          });
-        }
-        else if (rType === 'lake') {
-          addNeedsButton(scene, cx - 45, needsBtnY, elems, '💧 ' + (isSi ? 'බොන්න' : 'Drink'), function() {
-            localPlayerData.needs.thirst = Math.min(100, localPlayerData.needs.thirst + 30);
-            floatText(scene, '💧 +30', cx - 45, needsBtnY, '#4CAF50');
-            refreshHud(scene);
-          }, 80);
-          addNeedsButton(scene, cx + 45, needsBtnY, elems, '🧼 ' + (isSi ? 'නාන්න' : 'Bathe'), function() {
-            localPlayerData.needs.hygiene = Math.min(100, localPlayerData.needs.hygiene + 50);
-            floatText(scene, '🧼 +50', cx + 45, needsBtnY, '#4CAF50');
-            refreshHud(scene);
-          }, 80);
-        }
-        else if (rType === 'house' || rType === 'workers_hut' || rType === 'tree') {
-          addNeedsButton(scene, cx, needsBtnY, elems, '🚽 ' + (isSi ? 'වැසිකිළිය' : 'Use Toilet'), function() {
-            localPlayerData.needs.toilet = 100;
-            floatText(scene, '🚽 +100', cx, needsBtnY, '#4CAF50');
-            refreshHud(scene);
-          });
-        }
+      scene._feedPlayer = function(amount) {
+        localPlayerData.needs.hunger = Math.min(100, localPlayerData.needs.hunger + amount);
+        floatText(scene, '🍔 +' + amount, res.sprite.x, res.sprite.y, '#4CAF50');
+        refreshHud(scene);
+      };
 
-      } else {
-        var btn = scene.add.graphics().setDepth(201);
-        btn.fillStyle(0xFFB300, 1); // Dark gold base
-        btn.fillRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        btn.lineStyle(2, 0xFFE082, 1); // Bright gold border
-        btn.strokeRoundedRect(cx - 80, btnY - 20, 160, 40, 8);
-        elems.push(btn);
+      scene._hydratePlayer = function(amount) {
+        localPlayerData.needs.thirst = Math.min(100, localPlayerData.needs.thirst + amount);
+        floatText(scene, '💧 +' + amount, res.sprite.x, res.sprite.y, '#4CAF50');
+        refreshHud(scene);
+      };
 
-        var boostTxt = isSi ? '\u26A1 50 රත්‍රන්' : '\u26A1 50 Gold';
-        var txt = scene.add.text(cx, btnY, boostTxt, {
-          fontFamily: 'monospace', fontSize: '16px', color: '#000', fontStyle: 'bold'
-        }).setOrigin(0.5).setDepth(202);
-        elems.push(txt);
+      scene._cleanPlayer = function(amount) {
+        localPlayerData.needs.hygiene = Math.min(100, localPlayerData.needs.hygiene + amount);
+        floatText(scene, '🧼 +' + amount, res.sprite.x, res.sprite.y, '#4CAF50');
+        refreshHud(scene);
+      };
 
-        var zone = scene.add.zone(cx, btnY, 160, 40).setDepth(203).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', function(ptr, localX, localY, ev) {
-          if (ev) ev.stopPropagation();
-          if (ptr.event) ptr.event.stopPropagation();
-          closeContextualMenu(scene);
-          boostHarvest(scene, res, taskKey);
-        });
-        elems.push(zone);
-      }
-
-      radialMenuElements = elems;
-      isMenuOpen = true;
+      scene._toiletPlayer = function() {
+        localPlayerData.needs.toilet = 100;
+        floatText(scene, '🚽 +100', res.sprite.x, res.sprite.y, '#4CAF50');
+        refreshHud(scene);
+      };
     }
 
     function closeContextualMenu(scene) {
-      if (radialMenuElements) {
-        radialMenuElements.forEach(function (el) { if (el && el.destroy) el.destroy(); });
-        radialMenuElements = null;
+      if (isMenuOpen) {
+        window.notifyFlutter({ type: 'close_contextual_menu' });
+        isMenuOpen = false;
       }
-      isMenuOpen = false;
+    }
+
+    /* ──────────────────────────────────────────────
+       SMART FENCE BUILDING (Phase 3)
+       ────────────────────────────────────────────── */
+    function showFenceEditOverlay(scene, res, ox, oy) {
+      if (activeFenceOverlay) { activeFenceOverlay.destroy(); activeFenceOverlay = null; }
+      if (!res || !res.buildingData) return;
+      var bData = res.buildingData;
+      var tx = bData.tx;
+      var ty = bData.ty;
+
+      activeFenceOverlay = scene.add.group();
+
+      function createDirArrow(dx, dy, icon) {
+        var ntx = tx + dx;
+        var nty = ty + dy;
+        // Check grid boundary
+        if (ntx < 0 || ntx >= GRID || nty < 0 || nty >= GRID) return;
+        
+        // Check if blocked by any occupied tile (4x4)
+        var blocked = false;
+        for(var rr=0; rr<4; rr++){
+          for(var cc=0; cc<4; cc++){
+            if(scene._occupied[(ntx+cc) + ',' + (nty+rr)]) blocked = true;
+          }
+        }
+        if (blocked) return;
+
+        var iso = tileToWorld(ntx, nty, ox, oy);
+        var arrow = scene.add.text(iso.x, iso.y, icon, { fontSize: '24px' })
+          .setOrigin(0.5, 0.5)
+          .setDepth(tx + ty + 100)
+          .setInteractive()
+          .on('pointerdown', function(pointer) {
+             pointer.event.stopPropagation(); // prevent underlying grid click
+          })
+          .on('pointerup', function(pointer) {
+             pointer.event.stopPropagation();
+             var currentWood = taskProgress['task2'] || 0;
+             if (currentWood < 2) {
+               floatText(scene, window.gameLanguage === 'si' ? 'දැව මදි!' : 'Not enough Wood!', iso.x, iso.y - 20, '#FF0000');
+               return;
+             }
+             // Deduct wood
+             taskProgress['task2'] -= 2;
+             
+             // Place new fence
+             for(var r=0; r<4; r++){
+               for(var c=0; c<4; c++){
+                 scene._occupied[(ntx+c) + ',' + (nty+r)] = true;
+               }
+             }
+             var nIso = cartToIso(ntx + 1.5, nty + 1.5);
+             var np = { x: nIso.x + ox + TILE_W/2, y: nIso.y + oy + TILE_H/2 };
+             var spr = scene.add.image(np.x, np.y, 'fence').setOrigin(0.5, 0.8).setDepth(ntx + nty + 1).setScale(0.12);
+             
+             var newBData = { type: 'fence', sprite: spr, tx: ntx, ty: nty, w: 4, h: 4 };
+             scene._buildings.push(newBData);
+             
+             var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
+             savedBuildings.push({ type: 'fence', tx: ntx, ty: nty });
+             localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
+
+             playHarvestEffect(scene, np.x, np.y, 'spark');
+             refreshHud(scene);
+
+             // Re-center overlay on new fence
+             showFenceEditOverlay(scene, { isBuilding: true, type: 'fence', buildingData: newBData }, ox, oy);
+          });
+        activeFenceOverlay.add(arrow);
+      }
+
+      createDirArrow(0, -4, '⬆️'); // North
+      createDirArrow(0, 4, '⬇️');  // South
+      createDirArrow(4, 0, '➡️');  // East
+      createDirArrow(-4, 0, '⬅️'); // West
+
+      // Delete Button
+      var centerIso = tileToWorld(tx, ty, ox, oy);
+      var delBtn = scene.add.text(centerIso.x, centerIso.y - 20, '❌', { fontSize: '20px' })
+        .setOrigin(0.5, 0.5)
+        .setDepth(tx + ty + 101)
+        .setInteractive()
+        .on('pointerdown', function(pointer) {
+           pointer.event.stopPropagation();
+        })
+        .on('pointerup', function(pointer) {
+           pointer.event.stopPropagation();
+           taskProgress['task2'] = (taskProgress['task2'] || 0) + 1; // refund 1 wood
+           floatText(scene, '+1 🪵', centerIso.x, centerIso.y - 40, '#8B5A2B');
+           scene._removeBuilding(tx, ty);
+           refreshHud(scene);
+           activeFenceOverlay.destroy();
+           activeFenceOverlay = null;
+        });
+      activeFenceOverlay.add(delBtn);
+    }
+
+    /* ──────────────────────────────────────────────
+       AUTOMATED RESOURCE GATHERING (Phase 1)
+       ────────────────────────────────────────────── */
+    function startAutomatedHarvest(scene, unit, res, ox, oy) {
+      if (!unit || !res) return;
+      if (res.isBuilding) {
+        // Buildings are interacted with via contextual menu, not automated loops.
+        createContextualMenu(scene, res);
+        return;
+      }
+      if (res.currentYield <= 0) return;
+      
+      if (scene.anims && scene.anims.exists('action-axe')) {
+         unit.play('action-axe', true);
+      } else {
+         scene.tweens.add({
+           targets: unit, y: unit.y - 10,
+           yoyo: true, repeat: -1, duration: 400
+         });
+      }
+      
+      var taskKey = 'task1';
+      if (res.type === 'tree') taskKey = 'task2';
+      else if (res.type === 'gem_rock') taskKey = 'task3';
+      else if (res.type === 'deer') taskKey = 'task1';
+
+      unit._harvestTimer = scene.time.addEvent({
+        delay: 2000,
+        loop: true,
+        callback: function() {
+          if (!res.sprite || !res.sprite.active || res.currentYield <= 0) {
+            if (unit._harvestTimer) unit._harvestTimer.remove(false);
+            unit._harvestTimer = null;
+            scene.tweens.killTweensOf(unit);
+            unit.stop();
+            return;
+          }
+
+          res.currentYield -= 1;
+          
+          if (res.type === 'gem_rock') {
+            localPlayerData.gold += 1;
+            floatText(scene, '+1 💎', unit.x, unit.y - 40, '#D4AF37');
+          } else if (res.type === 'deer') {
+            localPlayerData.inventory = localPlayerData.inventory || {};
+            localPlayerData.inventory.food = (localPlayerData.inventory.food || 0) + 1;
+            floatText(scene, '+1 🍖', unit.x, unit.y - 40, '#A5D6A7');
+          } else {
+            taskProgress[taskKey] = (taskProgress[taskKey] || 0) + 1;
+            floatText(scene, '+1 🪵', unit.x, unit.y - 40, '#8B5A2B');
+          }
+
+          playHarvestEffect(scene, res.sprite.x, res.sprite.y, 'spark');
+          refreshHud(scene);
+          checkEraCompletion(scene);
+
+          if (res.currentYield <= 0) {
+            // Depleted!
+            if (unit._harvestTimer) unit._harvestTimer.remove(false);
+            unit._harvestTimer = null;
+            scene.tweens.killTweensOf(unit);
+            unit.stop();
+            
+            for(var rr=0; rr<4; rr++){
+              for(var cc=0; cc<4; cc++){
+                scene._occupied[(res.tileX+cc) + ',' + (res.tileY+rr)] = false;
+              }
+            }
+            if (res.shadow) res.shadow.destroy();
+            res.sprite.destroy();
+          }
+        }
+      });
     }
 
     function removeBuilding(scene, bData) {
@@ -2318,55 +2384,12 @@
       }
 
       if (allDone) {
-        localStorage.setItem(ERA_UNLOCK_KEY, 'true');
-
-        /* completion overlay */
-        var W = scene.cameras.main.width;
-        var H = scene.cameras.main.height;
-
-        var veil = scene.add.graphics().setScrollFactor(0).setDepth(300);
-        veil.fillStyle(0x000000, 0.75);
-        veil.fillRect(0, 0, W, H);
-
-        var panel = scene.add.graphics().setScrollFactor(0).setDepth(301);
-        panel.fillStyle(0x1E2A38, 0.95);
-        panel.fillRoundedRect(W / 2 - 200, H / 2 - 80, 400, 160, 20);
-        panel.lineStyle(3, 0xD4AF37, 1);
-        panel.strokeRoundedRect(W / 2 - 200, H / 2 - 80, 400, 160, 20);
-
-        var titleText = window.gameLanguage === 'si' ? '\u0DBA\u0DD4\u0D9C\u0DBA \u0DA2\u0DBA\u0D9C\u0DCA\u200D\u0DBB\u0DC4\u0DAB\u0DBA \u0D9A\u0DBB\u0DB1 \u0DBD\u0DAF\u0DD3!' : 'Era Completed!';
-        var subText = window.gameLanguage === 'si' ? 'යුගය සම්පූර්ණයි!' : 'Era Completed!';
-        var btnString = window.gameLanguage === 'si' ? '📦 සිතියමට යන්න' : '📦 Return to Map';
-
-        var title = scene.add.text(W / 2, H / 2 - 50, titleText, {
-          fontFamily: '"Noto Sans","Iskoola Pota",sans-serif',
-          fontSize: '16px', color: '#D4AF37', fontStyle: 'bold',
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(302);
-
-        var sub = scene.add.text(W / 2, H / 2 - 22, subText, {
-          fontFamily: 'monospace', fontSize: '14px', color: '#ffffff',
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(302);
-
-        var btnBg = scene.add.graphics().setScrollFactor(0).setDepth(302);
-        btnBg.fillStyle(0xD4AF37, 1);
-        btnBg.fillRoundedRect(W / 2 - 80, H / 2 + 20, 160, 40, 10);
-
-        var btnText = scene.add.text(W / 2, H / 2 + 40, btnString, {
-          fontFamily: 'monospace', fontSize: '13px', color: '#000000', fontStyle: 'bold',
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(303).setInteractive({ useHandCursor: true });
-
-        btnText.on('pointerdown', function () {
-          veil.destroy(); panel.destroy(); title.destroy(); sub.destroy();
-          btnBg.destroy(); btnText.destroy();
-          window.showFlutterUi();
-        });
-
-        /* entrance animation */
-        var overlayItems = [veil, panel, title, sub, btnBg, btnText];
-        overlayItems.forEach(function (el) { el.setAlpha(0); });
-        scene.tweens.add({
-          targets: overlayItems, alpha: 1, duration: 500, ease: 'Power2',
-        });
+        if (!localStorage.getItem(ERA_UNLOCK_KEY)) {
+          localStorage.setItem(ERA_UNLOCK_KEY, 'true');
+          window.notifyFlutter({
+            type: 'show_era_completion'
+          });
+        }
       }
     }
 
