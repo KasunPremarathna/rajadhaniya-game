@@ -130,8 +130,17 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     final type = data['type'];
     if (type == 'hud_update') {
       setState(() {
-        _hudData = data;
+        if (_hudData == null) {
+          _hudData = Map<String, dynamic>.from(data);
+        } else {
+          data.forEach((key, value) {
+            _hudData![key] = value;
+          });
+        }
       });
+      if (data['forceSync'] == true) {
+        _syncToCloud();
+      }
       // Cloud sync is now handled by _cloudSyncTimer in the background to save costs.
     } else if (type == 'version_mismatch') {
       Navigator.of(context).push(

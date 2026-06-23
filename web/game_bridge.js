@@ -115,6 +115,7 @@
     }
   };
   window.__gameActive = false;
+  window.__forceSync = false;
 
   var eraCharacterMap = {
     prehistoric:   { name: '\u0D9C\u0DDD\u0DAD\u0DCA\u200D\u0DBB\u0DD2\u0D9A \u0DC0\u0DD0\u0DC3\u0DD2\u0DBA\u0DCF', en: 'Tribal Settler' },
@@ -302,13 +303,14 @@
     return { tx: Math.round(cart.cx), ty: Math.round(cart.cy) };
   }
 
-  function getPath(scene, x0, y0, x1, y1, rangeObj) {
+  function getPathAsync(scene, x0, y0, x1, y1, rangeObj, callback) {
     var targetRect = (typeof rangeObj === 'object' && rangeObj !== null) ? rangeObj : null;
     var range = targetRect ? 0 : (rangeObj || 0);
 
     var openSet = [{ x: x0, y: y0, g: 0, f: 0, parent: null }];
     var closedSet = {};
-    var maxSteps = 5000;
+    var maxStepsTotal = 5000;
+    var stepsTaken = 0;
     
     function makeKey(x, y) { return x + ',' + y; }
 
@@ -321,50 +323,60 @@
       return Math.abs(x - x1) + Math.abs(y - y1);
     }
     
-    while(openSet.length > 0 && maxSteps-- > 0) {
-      openSet.sort(function(a, b) { return a.f - b.f; });
-      var current = openSet.shift();
-      var key = makeKey(current.x, current.y);
-      
-      var reached = false;
-      if (targetRect) {
-        var dx = Math.max(targetRect.tx - current.x, 0, current.x - (targetRect.tx + targetRect.w - 1));
-        var dy = Math.max(targetRect.ty - current.y, 0, current.y - (targetRect.ty + targetRect.h - 1));
-        reached = (dx + dy <= 1); // 1 = exactly adjacent
-      } else {
-        reached = (Math.abs(current.x - x1) + Math.abs(current.y - y1) <= range);
-      }
-
-      if (reached) {
-        var path = [];
-        var curr = current;
-        while(curr) { path.unshift({x: curr.x, y: curr.y}); curr = curr.parent; }
-        return path;
-      }
-      
-      closedSet[key] = true;
-      var neighbors = [
-        {x: current.x, y: current.y - 1}, {x: current.x, y: current.y + 1},
-        {x: current.x - 1, y: current.y}, {x: current.x + 1, y: current.y}
-      ];
-      
-      for (var i = 0; i < neighbors.length; i++) {
-        var n = neighbors[i];
-        if (n.x < 0 || n.x >= GRID || n.y < 0 || n.y >= GRID) continue;
-        if (scene._barriers && scene._barriers[makeKey(n.x, n.y)]) continue; // fence = absolute barrier
-        if (scene._occupied[makeKey(n.x, n.y)]) continue; // fully block since we stop adjacent anyway
-        if (closedSet[makeKey(n.x, n.y)]) continue;
+    function processChunk() {
+      var stepsThisFrame = 0;
+      while(openSet.length > 0 && stepsTaken < maxStepsTotal && stepsThisFrame < 300) {
+        stepsTaken++;
+        stepsThisFrame++;
+        openSet.sort(function(a, b) { return a.f - b.f; });
+        var current = openSet.shift();
+        var key = makeKey(current.x, current.y);
         
-        var tentativeG = current.g + 1;
-        var inOpen = openSet.find(function(node) { return node.x === n.x && node.y === n.y; });
-        if (!inOpen) {
-          openSet.push({x: n.x, y: n.y, g: tentativeG, f: tentativeG + heuristic(n.x, n.y), parent: current});
-        } else if (tentativeG < inOpen.g) {
-          inOpen.g = tentativeG; inOpen.f = tentativeG + heuristic(n.x, n.y); inOpen.parent = current;
+        var reached = false;
+        if (targetRect) {
+          var dx = Math.max(targetRect.tx - current.x, 0, current.x - (targetRect.tx + targetRect.w - 1));
+          var dy = Math.max(targetRect.ty - current.y, 0, current.y - (targetRect.ty + targetRect.h - 1));
+          reached = (dx + dy <= 1); // 1 = exactly adjacent
+        } else {
+          reached = (Math.abs(current.x - x1) + Math.abs(current.y - y1) <= range);
+        }
+
+        if (reached) {
+          var path = [];
+          var curr = current;
+          while(curr) { path.unshift({x: curr.x, y: curr.y}); curr = curr.parent; }
+          return callback(path);
+        }
+        
+        closedSet[key] = true;
+        var neighbors = [
+          {x: current.x, y: current.y - 1}, {x: current.x, y: current.y + 1},
+          {x: current.x - 1, y: current.y}, {x: current.x + 1, y: current.y}
+        ];
+        
+        for (var i = 0; i < neighbors.length; i++) {
+          var n = neighbors[i];
+          if (n.x < 0 || n.x >= GRID || n.y < 0 || n.y >= GRID) continue;
+          if (scene._barriers && scene._barriers[makeKey(n.x, n.y)]) continue; // fence = absolute barrier
+          if (scene._occupied[makeKey(n.x, n.y)]) continue; // fully block since we stop adjacent anyway
+          if (closedSet[makeKey(n.x, n.y)]) continue;
+          
+          var tentativeG = current.g + 1;
+          var inOpen = openSet.find(function(node) { return node.x === n.x && node.y === n.y; });
+          if (!inOpen) {
+            openSet.push({x: n.x, y: n.y, g: tentativeG, f: tentativeG + heuristic(n.x, n.y), parent: current});
+          } else if (tentativeG < inOpen.g) {
+            inOpen.g = tentativeG; inOpen.f = tentativeG + heuristic(n.x, n.y); inOpen.parent = current;
+          }
         }
       }
+      if (openSet.length > 0 && stepsTaken < maxStepsTotal) {
+        scene.time.delayedCall(1, processChunk);
+      } else {
+        callback([]);
+      }
     }
-    return [];
+    processChunk();
   }
 
   function distToTile(tx, ty, targetRes) {
@@ -493,29 +505,29 @@
         s.load.audio('loading_music', 'assets/game/audio/loading_music.mp3' + v);
         
         // Common assets (trees, resources, etc.)
-        s.load.image('tree', commonFolder + 'tree.png' + v);
-        s.load.spritesheet('deer', commonFolder + 'cow.png' + v, { frameWidth: 256, frameHeight: 256 });
-        s.load.image('gem_rock', commonFolder + 'gem_rock.png' + v);
+        s.load.image('tree', commonFolder + 'tree.webp' + v);
+        s.load.spritesheet('deer', commonFolder + 'cow.webp' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.image('gem_rock', commonFolder + 'gem_rock.webp' + v);
 
         // Era-specific character sprite sheets
-        s.load.spritesheet('player', eraFolder + 'walkingemptyhand.png' + v, { frameWidth: 256, frameHeight: 256 });
-        s.load.spritesheet('player_axe', eraFolder + 'taskwithaex.png' + v, { frameWidth: 256, frameHeight: 256 });
-        s.load.spritesheet('player_pickaxe', eraFolder + 'taskhandonrock.png' + v, { frameWidth: 256, frameHeight: 256 });
-        s.load.spritesheet('npc_farmer', eraFolder + 'npc_farmer.png' + v, { frameWidth: 256, frameHeight: 256 });
-        s.load.spritesheet('npc_lumberjack', eraFolder + 'npc_lumberjack.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('player', eraFolder + 'walkingemptyhand.webp' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('player_axe', eraFolder + 'taskwithaex.webp' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('player_pickaxe', eraFolder + 'taskhandonrock.webp' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('npc_farmer', eraFolder + 'npc_farmer.webp' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('npc_lumberjack', eraFolder + 'npc_lumberjack.webp' + v, { frameWidth: 256, frameHeight: 256 });
 
         // Era-specific buildings
-        s.load.image('house', eraFolder + 'house.png' + v);
-        s.load.image('farm', eraFolder + 'farm.png' + v);
-        s.load.image('mine', eraFolder + 'mine.png' + v);
-        s.load.image('workers_hut', eraFolder + 'workers_hut.png' + v);
-        s.load.image('temple', eraFolder + 'temple.png' + v);
-        s.load.image('lake', eraFolder + 'lake.png' + v);
-        s.load.image('boat_house', eraFolder + 'boat_house.png' + v);
-        s.load.image('cow_farm', eraFolder + 'cow_farm.png' + v);
+        s.load.image('house', eraFolder + 'house.webp' + v);
+        s.load.image('farm', eraFolder + 'farm.webp' + v);
+        s.load.image('mine', eraFolder + 'mine.webp' + v);
+        s.load.image('workers_hut', eraFolder + 'workers_hut.webp' + v);
+        s.load.image('temple', eraFolder + 'temple.webp' + v);
+        s.load.image('lake', eraFolder + 'lake.webp' + v);
+        s.load.image('boat_house', eraFolder + 'boat_house.webp' + v);
+        s.load.image('cow_farm', eraFolder + 'cow_farm.webp' + v);
         
-        s.load.image('fence', eraFolder + 'fence.png' + v);
-        s.load.image('enemy_base', eraFolder + 'enemy_base.png' + v);
+        s.load.image('fence', eraFolder + 'fence.webp' + v);
+        s.load.image('enemy_base', eraFolder + 'enemy_base.webp' + v);
         /* particles */
         var pg1 = s.add.graphics();
         pg1.fillStyle(0x4CAF50, 1); pg1.fillCircle(4, 4, 4);
@@ -575,9 +587,15 @@
       physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
       scene: GameScene,
       scale: {
-        mode: Phaser.Scale.FIT,
+        mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH,
       },
+    });
+
+    window.addEventListener('resize', function() {
+      if (phaserInstance && window.__gameActive) {
+        phaserInstance.scale.resize(window.innerWidth, window.innerHeight);
+      }
     });
 
     /* ──────────────────────────────────────────────
@@ -669,11 +687,52 @@
       scene._buildings = [];
       npcSprites = [];
 
+      scene._npcPool = scene.add.group();
+
+      function getPooledUnit(scene, x, y, texture) {
+        var s = scene._npcPool.getFirstDead(false);
+        if (!s) {
+          s = scene.add.sprite(x, y, texture);
+          scene._npcPool.add(s);
+        } else {
+          s.setActive(true).setVisible(true).setPosition(x, y).setTexture(texture).clearTint().setAlpha(1);
+          if (s._bubble) { s._bubble.destroy(); s._bubble = null; }
+          if (s._harvestTimer) { s._harvestTimer.remove(false); s._harvestTimer = null; }
+          scene.tweens.killTweensOf(s);
+        }
+        return s;
+      }
+      scene.getPooledUnit = getPooledUnit;
+
+      function recycleUnit(scene, s) {
+        if (!s) return;
+        s.setActive(false).setVisible(false);
+        if (s._bubble) { s._bubble.destroy(); s._bubble = null; }
+        if (s._harvestTimer) { s._harvestTimer.remove(false); s._harvestTimer = null; }
+        scene.tweens.killTweensOf(s);
+      }
+      scene.recycleUnit = recycleUnit;
+
       /* load persistent buildings */
       var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
+      var updated = false;
       savedBuildings.forEach(function(b) {
         var config = BUILDINGS_CONFIG[b.type];
         if (!config) return;
+
+        if (b.is_completed === false) {
+           if (Date.now() >= b.completion_timestamp) {
+              b.is_completed = true;
+              updated = true;
+           } else {
+              b.w = config.w;
+              b.h = config.h;
+              scene._buildings.push(b);
+              startConstruction(scene, b, config);
+              return; // Skip normal rendering
+           }
+        }
+
         var pos = tileToWorld(b.tx, b.ty, ox, oy);
         var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(b.tx + b.ty + 0.1);
         var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.12);
@@ -685,18 +744,24 @@
             }
           }
         }
-        scene._buildings.push({sprite: bSprite, tx: b.tx, ty: b.ty, w: config.w, h: config.h, type: b.type});
+        b.sprite = bSprite;
+        b.w = config.w;
+        b.h = config.h;
+        scene._buildings.push(b);
         
         // Spawn farmer for existing cow_farm or lumber_camp
         if (b.type === 'cow_farm' || b.type === 'lumber_camp') {
           var spriteKey = b.type === 'cow_farm' ? 'npc_farmer' : 'npc_lumberjack';
-          var n = scene.add.sprite(pos.x, pos.y + 10, spriteKey).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.25);
+          var n = scene.getPooledUnit(scene, pos.x, pos.y + 10, spriteKey).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.25);
           n._tileX = b.tx; n._tileY = b.ty;
           n._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
           npcSprites.push(n);
           scheduleNPCMove(scene, n, ox, oy);
         }
       });
+      if (updated) {
+         localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
+      }
 
       /* place grass tiles using decoupled logical grid */
       for (var r = 0; r < GRID; r+=4) {
@@ -780,7 +845,7 @@
         var ty = Phaser.Math.Between(0, GRID - 1);
         if(!scene._occupied[tx+','+ty]) {
           var pos = tileToWorld(tx, ty, ox, oy);
-          var s = scene.add.sprite(pos.x, pos.y, 'player').setOrigin(0.5, 0.8).setDepth(tx + ty + 1).setScale(0.25);
+          var s = scene.getPooledUnit(scene, pos.x, pos.y, 'player').setOrigin(0.5, 0.8).setDepth(tx + ty + 1).setScale(0.25);
           s.setTint(0xAAAAAA);
           s._tileX = tx; s._tileY = ty;
           s._needs = { hunger: Phaser.Math.Between(10, 100), thirst: Phaser.Math.Between(10, 100) };
@@ -793,12 +858,60 @@
         if (ev.key === 'Escape') { closeContextualMenu(scene); window.showFlutterUi(); }
       });
 
+      /* Frustum Culling Loop */
+      scene.time.addEvent({
+        delay: 250,
+        loop: true,
+        callback: function() {
+          if (isMoving) return;
+          var view = scene.cameras.main.worldView;
+          var pad = 100;
+          var rect = new Phaser.Geom.Rectangle(view.x - pad, view.y - pad, view.width + pad * 2, view.height + pad * 2);
+          
+          function cull(arr) {
+            for (var i = 0; i < arr.length; i++) {
+              var obj = arr[i];
+              var spr = obj.sprite || obj;
+              if (spr && spr.active) {
+                var inView = Phaser.Geom.Rectangle.Contains(rect, spr.x, spr.y);
+                spr.setVisible(inView);
+                if (obj.shadow) obj.shadow.setVisible(inView);
+                if (obj.label) obj.label.setVisible(inView);
+                if (obj.flag) obj.flag.setVisible(inView);
+              }
+            }
+          }
+          cull(resourceSprites);
+          cull(npcSprites);
+          cull(scene._buildings);
+          cull(enemyKingdoms);
+        }
+      });
+
+      /* Idle Sleep Mode */
+      var idleTimer = scene.time.addEvent({
+        delay: 30000, // 30s
+        callback: function() {
+          scene.game.loop.targetFps = 30;
+        }
+      });
+
+      function wakeUp() {
+        scene.game.loop.targetFps = 60;
+        if (idleTimer) idleTimer.reset({ delay: 30000, callback: function() { scene.game.loop.targetFps = 30; } });
+      }
+
+      var mapBoundsW = GRID * TILE_W;
+      var mapBoundsH = GRID * TILE_H;
+      scene.cameras.main.setBounds(ox - mapBoundsW/2 - 1000, oy - 1000, mapBoundsW + 2000, mapBoundsH + 2000);
+
       /* ══════════════════════════════════════════════
          STEP 2 + 3 – Tap Gestures (Single & Double)
          ══════════════════════════════════════════════ */
       var tapState = { lastTime: 0, lastX: 0, lastY: 0, count: 0, pending: false };
 
       scene.input.on('pointermove', function(ptr) {
+        wakeUp();
         if (scene.input.pointer1.isDown && scene.input.pointer2.isDown) {
           var p1 = scene.input.pointer1;
           var p2 = scene.input.pointer2;
@@ -835,6 +948,7 @@
       var pointerDownY = 0;
 
       scene.input.on('pointerdown', function (ptr) {
+        wakeUp();
         pointerDownX = ptr.x;
         pointerDownY = ptr.y;
         if (scene.input.pointer1.isDown && scene.input.pointer2.isDown) return;
@@ -964,6 +1078,10 @@
 
         // Allow instantly inspecting buildings without needing a selected unit or walking to it
         if (clickedRes && clickedRes.isBuilding) {
+          if (clickedRes.buildingData && clickedRes.buildingData.is_completed === false) {
+             floatText(scene, 'Under Construction!', tileToWorld(tile.tx, tile.ty, ox, oy).x, tileToWorld(tile.tx, tile.ty, ox, oy).y - 40, '#FF4444');
+             return;
+          }
           if (clickedRes.type === 'fence') {
             if (isMenuOpen) closeContextualMenu(scene);
             showFenceEditOverlay(scene, clickedRes, ox, oy);
@@ -1016,7 +1134,7 @@
           if (dx + dy <= 2) { 
             startAutomatedHarvest(scene, selectedUnit, clickedRes, ox, oy);
           } else {
-            movePlayerToTile(scene, 0, 0, ox, oy, tRect, function(success) {
+            moveUnitToTile(scene, selectedUnit, 0, 0, ox, oy, tRect, function(success) {
               if (success) {
                 startAutomatedHarvest(scene, selectedUnit, clickedRes, ox, oy);
               }
@@ -1105,14 +1223,20 @@
             }
           });
 
-          // Cow Farm Production Calculation
-          var cowFarmCount = scene._buildings.filter(function(b) { return b.type === 'cow_farm'; }).length;
+          // Cow Farm Production Calculation (Milk only)
+          var cowFarmCount = scene._buildings.filter(function(b) { return b.type === 'cow_farm' && b.is_completed; }).length;
           if (cowFarmCount > 0) {
-            localPlayerData.inventory.meat = (localPlayerData.inventory.meat || 0) + (1 * cowFarmCount);
             localPlayerData.inventory.milk = (localPlayerData.inventory.milk || 0) + (3 * cowFarmCount);
           }
           
-          var lumberCampCount = scene._buildings.filter(function(b) { return b.type === 'lumber_camp'; }).length;
+          // Farm Production Calculation (Food & Meat)
+          var farmCount = scene._buildings.filter(function(b) { return b.type === 'farm' && b.is_completed; }).length;
+          if (farmCount > 0) {
+            localPlayerData.inventory.meat = (localPlayerData.inventory.meat || 0) + (1 * farmCount);
+            localPlayerData.inventory.food = (localPlayerData.inventory.food || 0) + (1 * farmCount);
+          }
+          
+          var lumberCampCount = scene._buildings.filter(function(b) { return b.type === 'lumber_camp' && b.is_completed; }).length;
           if (lumberCampCount > 0) {
             taskProgress['wood'] = (taskProgress['wood'] || 0) + (2 * lumberCampCount);
           }
@@ -1196,69 +1320,106 @@
       if (costs.gem) taskProgress['gem'] = Math.max(0, (taskProgress['gem']||0) - costs.gem);
 
       cancelBuild(scene);
+      
+      var durationSec = config.construction_duration_seconds || 5;
+      var completionTime = Date.now() + (durationSec * 1000);
+      
+      var bData = {
+         tx: tile.tx, ty: tile.ty, 
+         w: config.w, h: config.h, 
+         type: type, 
+         is_completed: false, 
+         completion_timestamp: completionTime
+      };
+      
+      scene._buildings.push(bData);
+      
+      var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
+      savedBuildings.push({ type: type, tx: tile.tx, ty: tile.ty, is_completed: false, completion_timestamp: completionTime });
+      localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
+
+      window.__forceSync = true;
       refreshHud(scene);
 
-      startConstruction(scene, tile, config, type);
+      startConstruction(scene, bData, config);
     }
 
-    function startConstruction(scene, tile, config, type) {
-      var pos = tileToWorld(tile.tx, tile.ty, scene._ox, scene._oy);
+    function startConstruction(scene, building, config) {
+      var pos = tileToWorld(building.tx, building.ty, scene._ox, scene._oy);
       
       for(var r=0; r<config.h; r++){
         for(var c=0; c<config.w; c++){
-          scene._occupied[(tile.tx+c)+','+(tile.ty+r)] = true;
+          scene._occupied[(building.tx+c)+','+(building.ty+r)] = true;
         }
       }
 
-      var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(tile.tx + tile.ty + 0.1);
-      var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(tile.tx + tile.ty + 2);
+      var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(building.tx + building.ty + 0.1);
+      var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(building.tx + building.ty + 2);
       bSprite.setScale(0.12); // Scale AI assets
       bSprite.setTint(0x777777); // Grey out during construction
+      building.sprite = bSprite;
+      building.shadow = shad;
 
-      var duration = 5000; // 5 seconds build time
+      var now = Date.now();
+      var remainingMs = building.completion_timestamp - now;
+      if (remainingMs <= 0) {
+         finishConstruction(scene, building, config);
+         return;
+      }
 
-      var bgBar = scene.add.graphics().setDepth(tile.tx + tile.ty + 2.5);
+      var bgBar = scene.add.graphics().setDepth(building.tx + building.ty + 2.5);
       bgBar.fillStyle(0x000000, 0.7);
       bgBar.fillRoundedRect(pos.x - 22, pos.y - 42, 44, 8, 4);
 
-      var fgBar = scene.add.graphics().setDepth(tile.tx + tile.ty + 2.6);
+      var fgBar = scene.add.graphics().setDepth(building.tx + building.ty + 2.6);
 
-      var timerLabel = scene.add.text(pos.x, pos.y - 56, '5s', {
+      var timerLabel = scene.add.text(pos.x, pos.y - 56, '', {
         fontFamily: 'monospace', fontSize: '11px', color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
-      }).setOrigin(0.5, 1).setDepth(tile.tx + tile.ty + 2.7);
+      }).setOrigin(0.5, 1).setDepth(building.tx + building.ty + 2.7);
 
       var timerEvent = scene.time.addEvent({
-        delay: duration,
+        delay: remainingMs,
         callback: function() {
           if (bgBar) bgBar.destroy();
           if (fgBar) fgBar.destroy();
           if (timerLabel) timerLabel.destroy();
           
-          finishConstruction(scene, tile, config, type, bSprite);
+          finishConstruction(scene, building, config);
         }
       });
+      
+      var durationMs = (config.construction_duration_seconds || 5) * 1000;
 
       var updateFn = function() {
         if (!fgBar.active) {
           scene.events.off('update', updateFn);
           return;
         }
-        var p = timerEvent.getProgress();
+        var elapsedMs = Date.now() - (building.completion_timestamp - durationMs);
+        var p = Math.max(0, Math.min(1, elapsedMs / durationMs));
+        
         fgBar.clear();
         fgBar.fillStyle(0xFFC107, 1);
         fgBar.fillRoundedRect(pos.x - 22, pos.y - 42, 44 * p, 8, 4);
         
-        var secsLeft = Math.ceil((1 - p) * (duration / 1000));
-        timerLabel.setText(secsLeft + 's');
+        var secsLeft = Math.ceil((building.completion_timestamp - Date.now()) / 1000);
+        if (secsLeft < 0) secsLeft = 0;
+        
+        if (secsLeft > 60) {
+           var m = Math.floor(secsLeft / 60);
+           var s = secsLeft % 60;
+           timerLabel.setText(m + 'm ' + s + 's');
+        } else {
+           timerLabel.setText(secsLeft + 's');
+        }
       };
       scene.events.on('update', updateFn);
     }
 
-    function finishConstruction(scene, tile, config, type, bSprite) {
-      bSprite.clearTint();
-      var pos = { x: bSprite.x, y: bSprite.y };
-
-      scene._buildings.push({sprite: bSprite, tx: tile.tx, ty: tile.ty, w: config.w, h: config.h, type: type});
+    function finishConstruction(scene, building, config) {
+      if (building.sprite) building.sprite.clearTint();
+      building.is_completed = true;
+      var type = building.type;
       
       taskProgress[type] = (taskProgress[type] || 0) + 1;
       
@@ -1266,16 +1427,21 @@
       if (type === 'fence') {
         for (var fr = 0; fr < config.h; fr++) {
           for (var fc = 0; fc < config.w; fc++) {
-            scene._barriers[(tile.tx + fc) + ',' + (tile.ty + fr)] = true;
+            scene._barriers[(building.tx + fc) + ',' + (building.ty + fr)] = true;
           }
         }
       }
       
       var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
-      savedBuildings.push({ type: type, tx: tile.tx, ty: tile.ty });
+      for (var i = 0; i < savedBuildings.length; i++) {
+         if (savedBuildings[i].tx === building.tx && savedBuildings[i].ty === building.ty) {
+            savedBuildings[i].is_completed = true;
+            break;
+         }
+      }
       localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
 
-      playHarvestEffect(scene, pos.x, pos.y, 'spark');
+      playHarvestEffect(scene, building.sprite.x, building.sprite.y, 'spark');
 
       // Trigger Firestore sync via Flutter hud_update
       refreshHud(scene);
@@ -1311,7 +1477,7 @@
       }
 
       if (type === 'cow_farm') {
-        var n = scene.add.sprite(bSprite.x, bSprite.y + 10, 'player').setOrigin(0.5, 0.8).setDepth(tile.tx + tile.ty + 2).setScale(0.25);
+        var n = scene.getPooledUnit(scene, bSprite.x, bSprite.y + 10, 'player').setOrigin(0.5, 0.8).setDepth(tile.tx + tile.ty + 2).setScale(0.25);
         n._tileX = tile.tx; n._tileY = tile.ty;
         n._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
         npcSprites.push(n);
@@ -1321,6 +1487,7 @@
       var buildStr = window.gameLanguage === 'si' ? '\u2714 ගොඩනැගුවා!' : '\u2714 Built!';
       floatText(scene, buildStr, pos.x, pos.y - 50, '#4CAF50');
       
+      window.__forceSync = true;
       refreshHud(scene);
       checkEraCompletion(scene);
     }
@@ -1379,7 +1546,7 @@
           
           var spr;
           if (cfg.type === 'deer') {
-            spr = scene.add.sprite(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
+            spr = scene.getPooledUnit(scene, pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
             if (scene.anims && scene.anims.exists('cow-walk')) spr.play('cow-walk', true);
             spr.setScale(0.25);
             spr._tileX = tx; spr._tileY = ty;
@@ -1625,66 +1792,73 @@
     }
 
     function movePlayerToTile(scene, tx, ty, ox, oy, range, onComplete) {
+      moveUnitToTile(scene, playerSprite, tx, ty, ox, oy, range, onComplete);
+    }
+
+    function moveUnitToTile(scene, unit, tx, ty, ox, oy, range, onComplete) {
       if (typeof range === 'function') {
         onComplete = range;
         range = 0;
       }
-      var cur = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
-      var path = getPath(scene, cur.tx, cur.ty, tx, ty, range);
-      if (path.length <= 1) {
-        isMoving = false; // ensure guard is clear
-        if (onComplete) onComplete(path.length === 1); // success=true if already there
-        return;
-      }
-
-      isMoving = true;
-      var idx = 1; /* skip start */
-
-      function nextStep() {
-        if (idx >= path.length) {
-          isMoving = false;
-          if (playerSprite.anims && playerSprite.anims.isPlaying) {
-            playerSprite.stop();
-          }
-          refreshHud(scene);
-          if (onComplete) onComplete(true);
+      var cur = worldToTile(unit.x, unit.y, ox, oy);
+      if (unit === playerSprite) isMoving = true;
+      
+      getPathAsync(scene, cur.tx, cur.ty, tx, ty, range, function(path) {
+        if (path.length <= 1) {
+          if (unit === playerSprite) isMoving = false;
+          if (onComplete) onComplete(path.length === 1);
           return;
         }
-        var t = path[idx];
-        var pos = tileToWorld(t.x, t.y, ox, oy);
 
-        /* face direction and play animation */
-        var prev = path[idx - 1];
-        if (scene.anims && scene.anims.exists('walk-down')) {
-          playerSprite.play('walk-down', true);
-        }
-        if (t.x > prev.x) playerSprite.setFlipX(false);
-        else if (t.x < prev.x) playerSprite.setFlipX(true);
+        var idx = 1;
 
-        playerSprite.setDepth(t.x + t.y + 1);
-        playerSprite._tileX = t.x; // update per-step for accurate proximity
-        playerSprite._tileY = t.y;
-        if (scene._playerShadow) {
-          scene._playerShadow.setPosition(pos.x, pos.y);
-          scene._playerShadow.setDepth(t.x + t.y + 0.1);
-        }
-
-        scene.tweens.add({
-          targets: playerSprite,
-          x: pos.x, y: pos.y,
-          duration: 30,
-          ease: 'Linear',
-          onUpdate: function() {
-            if (selectionRing && selectedUnit === playerSprite) {
-              selectionRing.setPosition(playerSprite.x, playerSprite.y);
-              selectionRing.setDepth(playerSprite.depth - 0.5);
+        function nextStep() {
+          if (idx >= path.length || !unit.active) {
+            if (unit === playerSprite) isMoving = false;
+            if (unit.anims && unit.anims.isPlaying) {
+              unit.stop();
             }
-          },
-          onComplete: function () { idx++; nextStep(); },
-        });
-      }
-      nextStep();
+            refreshHud(scene);
+            if (onComplete) onComplete(true);
+            return;
+          }
+          var t = path[idx];
+          var pos = tileToWorld(t.x, t.y, ox, oy);
+
+          var prev = path[idx - 1];
+          var animKey = (unit.texture && unit.texture.key === 'deer') ? 'cow-walk' : 'walk-down';
+          if (scene.anims && scene.anims.exists(animKey)) {
+            unit.play(animKey, true);
+          }
+          if (t.x > prev.x) unit.setFlipX(false);
+          else if (t.x < prev.x) unit.setFlipX(true);
+
+          unit.setDepth(t.x + t.y + 1);
+          unit._tileX = t.x;
+          unit._tileY = t.y;
+          if (unit === playerSprite && scene._playerShadow) {
+            scene._playerShadow.setPosition(pos.x, pos.y);
+            scene._playerShadow.setDepth(t.x + t.y + 0.1);
+          }
+
+          scene.tweens.add({
+            targets: unit,
+            x: pos.x, y: pos.y,
+            duration: 30,
+            ease: 'Linear',
+            onUpdate: function() {
+              if (selectionRing && selectedUnit === unit) {
+                selectionRing.setPosition(unit.x, unit.y);
+                selectionRing.setDepth(unit.depth - 0.5);
+              }
+            },
+            onComplete: function () { idx++; nextStep(); },
+          });
+        }
+        nextStep();
+      });
     }
+
 
     function scheduleNPCMove(scene, npc, ox, oy) {
       var wait = Phaser.Math.Between(2000, 6000);
@@ -1694,47 +1868,48 @@
         var ty = Phaser.Math.Between(0, Math.min(GRID - 1, npc._tileY + 15));
         if (scene._occupied[tx+','+ty]) { scheduleNPCMove(scene, npc, ox, oy); return; }
 
-        var path = getPath(scene, npc._tileX, npc._tileY, tx, ty);
-        if (path.length <= 1) { scheduleNPCMove(scene, npc, ox, oy); return; }
+        getPathAsync(scene, npc._tileX, npc._tileY, tx, ty, 0, function(path) {
+          if (path.length <= 1) { scheduleNPCMove(scene, npc, ox, oy); return; }
 
-        var idx = 1;
-        function nextStep() {
-          if (!npc.active) return;
-          if (idx >= path.length || scene._occupied[path[idx].x+','+path[idx].y]) {
-            if (npc.anims && npc.anims.isPlaying) {
-              npc.stop();
+          var idx = 1;
+          function nextStep() {
+            if (!npc.active) return;
+            if (idx >= path.length || scene._occupied[path[idx].x+','+path[idx].y]) {
+              if (npc.anims && npc.anims.isPlaying) {
+                npc.stop();
+              }
+              scheduleNPCMove(scene, npc, ox, oy);
+              return;
             }
-            scheduleNPCMove(scene, npc, ox, oy);
-            return;
-          }
-          var t = path[idx];
-          var pos = tileToWorld(t.x, t.y, ox, oy);
-          
-          if (t.x > npc._tileX) npc.setFlipX(false);
-          else if (t.x < npc._tileX) npc.setFlipX(true);
-          
-          if (npc.texture.key === 'deer') {
-            if (scene.anims && scene.anims.exists('cow-walk')) npc.play('cow-walk', true);
-          } else {
-            if (scene.anims && scene.anims.exists('walk-down')) npc.play('walk-down', true);
-          }
-
-          npc._tileX = t.x;
-          npc._tileY = t.y;
-          npc.setDepth(t.x + t.y + 1);
-
-          scene.tweens.add({
-            targets: npc,
-            x: pos.x, y: pos.y,
-            duration: 60,
-            ease: 'Linear',
-            onComplete: function() { 
-              idx++; 
-              nextStep(); 
+            var t = path[idx];
+            var pos = tileToWorld(t.x, t.y, ox, oy);
+            
+            if (t.x > npc._tileX) npc.setFlipX(false);
+            else if (t.x < npc._tileX) npc.setFlipX(true);
+            
+            if (npc.texture.key === 'deer') {
+              if (scene.anims && scene.anims.exists('cow-walk')) npc.play('cow-walk', true);
+            } else {
+              if (scene.anims && scene.anims.exists('walk-down')) npc.play('walk-down', true);
             }
-          });
-        }
-        nextStep();
+
+            npc._tileX = t.x;
+            npc._tileY = t.y;
+            npc.setDepth(t.x + t.y + 1);
+
+            scene.tweens.add({
+              targets: npc,
+              x: pos.x, y: pos.y,
+              duration: 60,
+              ease: 'Linear',
+              onComplete: function() { 
+                idx++; 
+                nextStep(); 
+              }
+            });
+          }
+          nextStep();
+        });
       });
     }
 
@@ -1868,6 +2043,7 @@
         var arrow = scene.add.text(iso.x, iso.y, icon, { fontSize: '24px' })
           .setOrigin(0.5, 0.5)
           .setDepth(tx + ty + 100)
+          .setPadding(12) // Generous hitbox padding for mobile (>=44px)
           .setInteractive()
           .on('pointerdown', function(pointer) {
              pointer.event.stopPropagation(); // prevent underlying grid click
@@ -1918,6 +2094,7 @@
       var delBtn = scene.add.text(centerIso.x, centerIso.y - 20, '❌', { fontSize: '20px' })
         .setOrigin(0.5, 0.5)
         .setDepth(tx + ty + 101)
+        .setPadding(12) // Generous hitbox
         .setInteractive()
         .on('pointerdown', function(pointer) {
            pointer.event.stopPropagation();
@@ -1935,17 +2112,25 @@
     }
 
     /* ──────────────────────────────────────────────
-       AUTOMATED RESOURCE GATHERING (Phase 1)
+       AUTOMATED RESOURCE GATHERING (Phase 1 & 2 - True AoE)
        ────────────────────────────────────────────── */
     function startAutomatedHarvest(scene, unit, res, ox, oy) {
       if (!unit || !res) return;
       if (res.isBuilding) {
-        // Buildings are interacted with via contextual menu, not automated loops.
         createContextualMenu(scene, res);
         return;
       }
       if (res.currentYield <= 0) return;
       
+      var maxCarry = 5;
+      unit._payload = unit._payload || { amount: 0, type: res.type };
+
+      // If unit already carrying something else or full, drop off first
+      if (unit._payload.amount >= maxCarry || (unit._payload.amount > 0 && unit._payload.type !== res.type)) {
+         returnDropoff(scene, unit, res, ox, oy);
+         return;
+      }
+
       if (scene.anims && scene.anims.exists('action-axe')) {
          unit.play('action-axe', true);
       } else {
@@ -1955,55 +2140,132 @@
          });
       }
       
-      var taskKey = 'task1';
-      if (res.type === 'tree') taskKey = 'task2';
-      else if (res.type === 'gem_rock') taskKey = 'task3';
-      else if (res.type === 'deer') taskKey = 'task1';
-
       unit._harvestTimer = scene.time.addEvent({
         delay: 2000,
         loop: true,
         callback: function() {
           if (!res.sprite || !res.sprite.active || res.currentYield <= 0) {
-            if (unit._harvestTimer) unit._harvestTimer.remove(false);
-            unit._harvestTimer = null;
-            scene.tweens.killTweensOf(unit);
-            unit.stop();
+            stopHarvesting(scene, unit);
+            if (unit._payload.amount > 0) returnDropoff(scene, unit, null, ox, oy);
             return;
           }
 
           res.currentYield -= 1;
+          unit._payload.amount += 1;
+          unit._payload.type = res.type;
           
-          if (res.type === 'gem_rock') {
-            localPlayerData.gold += 1;
-            floatText(scene, '+1 💎', unit.x, unit.y - 40, '#D4AF37');
-          } else if (res.type === 'deer') {
-            localPlayerData.inventory = localPlayerData.inventory || {};
-            localPlayerData.inventory.food = (localPlayerData.inventory.food || 0) + 1;
-            floatText(scene, '+1 🍖', unit.x, unit.y - 40, '#A5D6A7');
-          } else {
-            taskProgress[taskKey] = (taskProgress[taskKey] || 0) + 1;
-            floatText(scene, '+1 🪵', unit.x, unit.y - 40, '#8B5A2B');
-          }
-
+          var icon = (res.type === 'gem_rock') ? '💎' : (res.type === 'deer' ? '🍖' : '🪵');
+          floatText(scene, '+1 ' + icon, unit.x, unit.y - 40, '#FFFFFF');
           playHarvestEffect(scene, res.sprite.x, res.sprite.y, 'spark');
-          refreshHud(scene);
-          checkEraCompletion(scene);
 
           if (res.currentYield <= 0) {
-            // Depleted!
-            if (unit._harvestTimer) unit._harvestTimer.remove(false);
-            unit._harvestTimer = null;
-            scene.tweens.killTweensOf(unit);
-            unit.stop();
-            
-            for(var rr=0; rr<4; rr++){
-              for(var cc=0; cc<4; cc++){
-                scene._occupied[(res.tileX+cc) + ',' + (res.tileY+rr)] = false;
+            depleteResource(scene, res);
+            stopHarvesting(scene, unit);
+            if (unit._payload.amount > 0) returnDropoff(scene, unit, null, ox, oy);
+            return;
+          }
+
+          if (unit._payload.amount >= maxCarry) {
+            stopHarvesting(scene, unit);
+            returnDropoff(scene, unit, res, ox, oy);
+          }
+        }
+      });
+    }
+
+    function stopHarvesting(scene, unit) {
+      if (unit._harvestTimer) unit._harvestTimer.remove(false);
+      unit._harvestTimer = null;
+      scene.tweens.killTweensOf(unit);
+      if (unit.anims && unit.anims.isPlaying) unit.stop();
+    }
+
+    function depleteResource(scene, res) {
+      for(var rr=0; rr<4; rr++){
+        for(var cc=0; cc<4; cc++){
+          scene._occupied[(res.tileX+cc) + ',' + (res.tileY+rr)] = false;
+        }
+      }
+      if (res.shadow) res.shadow.destroy();
+      if (res.sprite) res.sprite.destroy();
+    }
+
+    function findNearestDropoff(scene, unit) {
+      var pType = unit._payload ? unit._payload.type : null;
+      var dropoffs = [];
+      if (pType === 'tree') {
+        dropoffs = ['workers_hut'];
+      } else if (pType === 'deer') {
+        dropoffs = ['house', 'workers_hut'];
+      } else if (pType === 'gem_rock') {
+        dropoffs = ['temple'];
+      } else {
+        dropoffs = ['house', 'workers_hut', 'temple', 'mine', 'farm', 'lumber_camp'];
+      }
+
+      var best = null;
+      var bestDist = Infinity;
+      var uTx = unit._tileX || 0;
+      var uTy = unit._tileY || 0;
+      for (var i = 0; i < scene._buildings.length; i++) {
+        var b = scene._buildings[i];
+        if (dropoffs.indexOf(b.type) !== -1) {
+          if (!b.is_completed) continue; // Only deposit at completed buildings
+          var dist = Math.abs(b.tx - uTx) + Math.abs(b.ty - uTy);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = b;
+          }
+        }
+      }
+      return best;
+    }
+
+    function depositPayload(scene, unit) {
+      if (!unit._payload || unit._payload.amount <= 0) return;
+      var amt = unit._payload.amount;
+      var type = unit._payload.type;
+      unit._payload.amount = 0;
+
+      if (type === 'gem_rock') {
+        localPlayerData.gold += amt;
+        taskProgress['gem'] = (taskProgress['gem'] || 0) + amt;
+      } else if (type === 'deer') {
+        localPlayerData.inventory = localPlayerData.inventory || {};
+        localPlayerData.inventory.meat = (localPlayerData.inventory.meat || 0) + amt;
+      } else if (type === 'tree') {
+        taskProgress['wood'] = (taskProgress['wood'] || 0) + amt;
+      } else {
+        var taskKey = type === 'tree' ? 'task2' : 'task1';
+        taskProgress[taskKey] = (taskProgress[taskKey] || 0) + amt;
+      }
+      refreshHud(scene);
+      checkEraCompletion(scene);
+    }
+
+    function returnDropoff(scene, unit, res, ox, oy) {
+      var dropoff = findNearestDropoff(scene, unit);
+      if (!dropoff) {
+        floatText(scene, 'No Drop-off!', unit.x, unit.y - 40, '#FF0000');
+        depositPayload(scene, unit); // Fallback deposit
+        return;
+      }
+      
+      var targetRect = { tx: dropoff.tx, ty: dropoff.ty, w: dropoff.w, h: dropoff.h };
+      moveUnitToTile(scene, unit, 0, 0, ox, oy, targetRect, function(success) {
+        if (success) {
+          depositPayload(scene, unit);
+          playHarvestEffect(scene, dropoff.sprite.x, dropoff.sprite.y, 'spark');
+          floatText(scene, 'Deposited!', unit.x, unit.y - 40, '#00FF00');
+
+          // Walk back to resource
+          if (res && res.currentYield > 0 && res.sprite && res.sprite.active) {
+            var rRect = { tx: res.tileX, ty: res.tileY, w: 4, h: 4 };
+            moveUnitToTile(scene, unit, 0, 0, ox, oy, rRect, function(reached) {
+              if (reached) {
+                startAutomatedHarvest(scene, unit, res, ox, oy);
               }
-            }
-            if (res.shadow) res.shadow.destroy();
-            res.sprite.destroy();
+            });
           }
         }
       });
@@ -2386,6 +2648,7 @@
       if (allDone) {
         if (!localStorage.getItem(ERA_UNLOCK_KEY)) {
           localStorage.setItem(ERA_UNLOCK_KEY, 'true');
+          window.__forceSync = true;
           window.notifyFlutter({
             type: 'show_era_completion'
           });
@@ -2397,25 +2660,34 @@
        HUD REFRESH (Bridge to Flutter)
        ────────────────────────────────────────────── */
     function refreshHud(scene) {
-      var cowFarmCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'cow_farm'; }).length : 0;
+      var cowFarmCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'cow_farm' && b.is_completed; }).length : 0;
+      var farmCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'farm' && b.is_completed; }).length : 0;
+      var lumberCampCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'lumber_camp' && b.is_completed; }).length : 0;
       
-      var lumberCampCount = scene._buildings ? scene._buildings.filter(function(b) { return b.type === 'lumber_camp'; }).length : 0;
-      
-      // Forward resource updates to Flutter instead of drawing text
+      var safeBuildings = scene._buildings ? scene._buildings.map(function(b) {
+         return {
+            tx: b.tx, ty: b.ty, w: b.w, h: b.h, type: b.type,
+            is_completed: b.is_completed,
+            completion_timestamp: b.completion_timestamp
+         };
+      }) : [];
+
+      // Forward resource updates to Flutter with lightweight payload
       window.notifyFlutter({
         type: 'hud_update',
         tasks: taskProgress,
-        config: TASKS_CONFIG,
         gold: localPlayerData.gold,
         needs: localPlayerData.needs,
         health: localPlayerData.health,
         meat: localPlayerData.inventory.meat || 0,
         milk: localPlayerData.inventory.milk || 0,
-        meatRate: cowFarmCount * 1200, // 1 per 3s = 1200/hr
+        meatRate: farmCount * 1200, // 1 per 3s = 1200/hr
         milkRate: cowFarmCount * 3600, // 3 per 3s = 3600/hr
         woodRate: lumberCampCount * 2400, // 2 per 3s = 2400/hr
-        buildings: JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]')
+        buildings: safeBuildings,
+        forceSync: window.__forceSync
       });
+      window.__forceSync = false;
       checkEraCompletion(scene);
     }
   }

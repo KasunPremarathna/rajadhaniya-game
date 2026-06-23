@@ -1,7 +1,6 @@
 {
   "global": {
     "housingSpaceLimit": 50,
-    "buildingConstructTimeMs": 5000,
     "treeClearCost": 100
   },
   "eras": [
@@ -67,16 +66,16 @@
     }
   ],
   "buildings": {
-    "house":       { "w": 8, "h": 8, "texture": "house",       "costs": { "gold": 50, "wood": 5 }, "name": "House", "icon": "🏠" },
-    "farm":        { "w": 8, "h": 8, "texture": "farm",        "costs": { "gold": 100, "wood": 10 }, "name": "Farm", "icon": "🌾" },
-    "mine":        { "w": 8, "h": 8, "texture": "mine",        "costs": { "gold": 150, "wood": 5, "gem": 5 }, "name": "Mine", "icon": "⛏️" },
-    "workers_hut": { "w": 8, "h": 8, "texture": "workers_hut", "costs": { "gold": 80, "wood": 10 }, "name": "Workers Hut", "icon": "👨‍🌾" },
-    "temple":      { "w": 12, "h": 12, "texture": "temple",      "costs": { "gold": 300, "wood": 20, "gem": 5 }, "name": "Temple", "icon": "🏛️" },
-    "lake":        { "w": 16, "h": 16, "texture": "lake",        "costs": { "gold": 50, "wood": 5 }, "name": "Lake", "icon": "🌊" },
-    "boat_house":  { "w": 8, "h": 8, "texture": "boat_house",  "costs": { "gold": 120, "wood": 15 }, "name": "Boat House", "icon": "⛵" },
-    "cow_farm":    { "w": 8, "h": 8, "texture": "cow_farm",    "costs": { "gold": 150, "wood": 20 }, "name": "Cow Farmer Hut", "icon": "🐄" },
-    "lumber_camp": { "w": 8, "h": 8, "texture": "workers_hut", "costs": { "gold": 60, "wood": 10 }, "name": "Lumber Camp", "icon": "🪓" },
-    "fence":       { "w": 4, "h": 4, "texture": "fence",       "costs": { "wood": 2 }, "name": "Fence", "icon": "🚧" }
+    "house":       { "w": 8, "h": 8, "texture": "house",       "costs": { "gold": 50, "wood": 5 }, "name": "Wadiya (House)", "icon": "🏠", "construction_duration_seconds": 10 },
+    "farm":        { "w": 8, "h": 8, "texture": "farm",        "costs": { "gold": 100, "wood": 10 }, "name": "Hunting Grounds / Farms", "icon": "🌾", "construction_duration_seconds": 15 },
+    "mine":        { "w": 8, "h": 8, "texture": "mine",        "costs": { "gold": 150, "wood": 5, "gem": 5 }, "name": "Mine", "icon": "⛏️", "construction_duration_seconds": 30 },
+    "workers_hut": { "w": 8, "h": 8, "texture": "workers_hut", "costs": { "gold": 80, "wood": 10 }, "name": "Maha Wadi Gedara (Town Center)", "icon": "🛖", "construction_duration_seconds": 30 },
+    "temple":      { "w": 12, "h": 12, "texture": "temple",      "costs": { "gold": 300, "wood": 20, "gem": 5 }, "name": "Devale (Shrine)", "icon": "🏛️", "construction_duration_seconds": 20 },
+    "lake":        { "w": 16, "h": 16, "texture": "lake",        "costs": { "gold": 50, "wood": 5 }, "name": "Lake", "icon": "🌊", "construction_duration_seconds": 20 },
+    "boat_house":  { "w": 8, "h": 8, "texture": "boat_house",  "costs": { "gold": 120, "wood": 15 }, "name": "Boat House", "icon": "⛵", "construction_duration_seconds": 30 },
+    "cow_farm":    { "w": 8, "h": 8, "texture": "cow_farm",    "costs": { "gold": 150, "wood": 20 }, "name": "Cow Farmer Hut", "icon": "🐄", "construction_duration_seconds": 20 },
+    "lumber_camp": { "w": 8, "h": 8, "texture": "workers_hut", "costs": { "gold": 60, "wood": 10 }, "name": "Lumber Camp", "icon": "🪓", "construction_duration_seconds": 15 },
+    "fence":       { "w": 4, "h": 4, "texture": "fence",       "costs": { "wood": 2 }, "name": "Fence", "icon": "🚧", "construction_duration_seconds": 5 }
   },
   "troops": [
     {
