@@ -25,7 +25,7 @@ class _GameViewWidgetState extends State<GameViewWidget> {
           JsBridge.handleWebViewMessage(message.message);
         },
       )
-      ..loadRequest(Uri.parse('https://rajadhanigamesl.web.app/game.html'));
+      ..loadRequest(Uri.parse('https://rajadhanigamesl.web.app/game.html?v=${DateTime.now().millisecondsSinceEpoch}'));
       
     // Set global reference for JsBridge to execute JS
     JsBridge.webViewController = controller;
