@@ -1421,7 +1421,8 @@
         
         fgBar.clear();
         fgBar.fillStyle(0xFFC107, 1);
-        fgBar.fillRoundedRect(pos.x - 22, pos.y - 42, 44 * p, 8, 4);
+        var barW = Math.max(8, 44 * p);
+        fgBar.fillRoundedRect(pos.x - 22, pos.y - 42, barW, 8, 4);
         
         var secsLeft = Math.ceil((building.completion_timestamp - Date.now()) / 1000);
         if (secsLeft < 0) secsLeft = 0;
