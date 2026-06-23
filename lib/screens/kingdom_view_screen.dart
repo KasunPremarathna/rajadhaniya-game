@@ -306,9 +306,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                         }),
                         const SizedBox(width: 12),
                         _buildCircularButton(Icons.settings, _translate('Settings'), () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Settings coming soon!')),
-                          );
+                          _showSettingsMenu();
                         }),
                         const SizedBox(width: 12),
                         _buildActionButton(_translate('Train'), Icons.shield, Colors.redAccent, () {
@@ -456,6 +454,59 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  void _showSettingsMenu() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2C1A10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+          ),
+          title: Text(
+            _translate('Settings'),
+            style: const TextStyle(
+              color: Color(0xFFD4AF37),
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Game Operations',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  JsBridge.forceAssetUpdate();
+                },
+                icon: const Icon(Icons.sync),
+                label: const Text('Update Game Resources'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         );
       },
     );
