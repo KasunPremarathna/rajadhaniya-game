@@ -1117,7 +1117,6 @@
         }
 
         if (clickedRes) {
-          if (isMoving) return;
           
           var tRect = null;
           if (clickedRes.isBuilding && clickedRes.buildingData) {
@@ -1778,17 +1777,23 @@
        STEP 2 – Single Tap: move player to tile
        ────────────────────────────────────────────── */
     function handleSingleTap(scene, pointer, ox, oy) {
-      if (isMoving) return;
-
+      var targetUnit = selectedUnit || playerSprite;
+      
       var wp = scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
       var tile = worldToTile(wp.x, wp.y, ox, oy);
       tile.tx = Math.max(0, Math.min(GRID - 1, tile.tx));
       tile.ty = Math.max(0, Math.min(GRID - 1, tile.ty));
 
-      var cur = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
+      var cur = worldToTile(targetUnit.x, targetUnit.y, ox, oy);
       if (tile.tx === cur.tx && tile.ty === cur.ty) return;
 
-      movePlayerToTile(scene, tile.tx, tile.ty, ox, oy);
+      // Interrupt existing tasks
+      if (targetUnit._harvestTimer) {
+        targetUnit._harvestTimer.remove(false);
+        targetUnit._harvestTimer = null;
+      }
+      
+      moveUnitToTile(scene, targetUnit, tile.tx, tile.ty, ox, oy);
     }
 
     function movePlayerToTile(scene, tx, ty, ox, oy, range, onComplete) {
@@ -1800,6 +1805,10 @@
         onComplete = range;
         range = 0;
       }
+      
+      scene.tweens.killTweensOf(unit);
+      if (unit === playerSprite) isMoving = false;
+      
       var cur = worldToTile(unit.x, unit.y, ox, oy);
       if (unit === playerSprite) isMoving = true;
       
