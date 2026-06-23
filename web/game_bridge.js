@@ -792,6 +792,20 @@
           duration: 400,
           ease: 'Sine.easeInOut'
         });
+        
+        selectedUnit = playerSprite;
+        if (!selectionRing) {
+          selectionRing = scene.add.graphics().setDepth(2000);
+          selectionRing.lineStyle(3, 0x00FF00, 0.8);
+          selectionRing.strokeEllipse(0, 0, 48, 24);
+          scene.tweens.add({
+            targets: selectionRing,
+            scaleX: 1.2, scaleY: 1.2, alpha: 0.5,
+            yoyo: true, repeat: -1, duration: 800
+          });
+        }
+        selectionRing.setPosition(playerSprite.x, playerSprite.y);
+        selectionRing.setVisible(true);
       };
       scene.cameras.main.setBackgroundColor('#689f38');
       
@@ -1103,21 +1117,16 @@
           return;
         }
 
-        if (!selectedUnit) {
-          // If no unit selected, tap does nothing
-          if (selectionRing) selectionRing.setVisible(false);
-          return; 
-        }
+        // Default to player if no unit is selected
+        var activeUnit = selectedUnit || playerSprite;
 
-        // --- At this point, we have a selected unit ---
-        if (selectedUnit._harvestTimer) {
-          selectedUnit._harvestTimer.remove(false);
-          selectedUnit._harvestTimer = null;
-          selectedUnit.stop();
+        if (activeUnit._harvestTimer) {
+          activeUnit._harvestTimer.remove(false);
+          activeUnit._harvestTimer = null;
+          activeUnit.stop();
         }
 
         if (clickedRes) {
-          
           var tRect = null;
           if (clickedRes.isBuilding && clickedRes.buildingData) {
             tRect = { tx: clickedRes.buildingData.tx, ty: clickedRes.buildingData.ty, w: clickedRes.buildingData.w, h: clickedRes.buildingData.h };
@@ -1131,11 +1140,11 @@
           var dy = Math.max(tRect.ty - pTile.ty, 0, pTile.ty - (tRect.ty + tRect.h - 1));
           
           if (dx + dy <= 2) { 
-            startAutomatedHarvest(scene, selectedUnit, clickedRes, ox, oy);
+            startAutomatedHarvest(scene, activeUnit, clickedRes, ox, oy);
           } else {
-            moveUnitToTile(scene, selectedUnit, 0, 0, ox, oy, tRect, function(success) {
+            moveUnitToTile(scene, activeUnit, 0, 0, ox, oy, tRect, function(success) {
               if (success) {
-                startAutomatedHarvest(scene, selectedUnit, clickedRes, ox, oy);
+                startAutomatedHarvest(scene, activeUnit, clickedRes, ox, oy);
               }
             });
           }
