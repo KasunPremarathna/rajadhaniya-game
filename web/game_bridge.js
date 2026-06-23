@@ -1205,19 +1205,30 @@
          });
       });
 
+      var survivalTick = 0;
       scene.time.addEvent({
         delay: 3000,
         callback: function() {
           if (window.__isDead) return;
-          localPlayerData.needs.hunger = Math.max(0, localPlayerData.needs.hunger - 1);
-          localPlayerData.needs.thirst = Math.max(0, localPlayerData.needs.thirst - 1);
-          localPlayerData.needs.hygiene = Math.max(0, localPlayerData.needs.hygiene - 1);
-          localPlayerData.needs.toilet = Math.max(0, localPlayerData.needs.toilet - 1);
+          survivalTick++;
+          
+          // Human-like timing:
+          // Thirst drops every 9 seconds (15 mins to zero)
+          // Hunger drops every 15 seconds (25 mins to zero)
+          // Toilet drops every 24 seconds (40 mins to zero)
+          // Hygiene drops every 36 seconds (60 mins to zero)
+          if (survivalTick % 5 === 0) localPlayerData.needs.hunger = Math.max(0, localPlayerData.needs.hunger - 1);
+          if (survivalTick % 3 === 0) localPlayerData.needs.thirst = Math.max(0, localPlayerData.needs.thirst - 1);
+          if (survivalTick % 12 === 0) localPlayerData.needs.hygiene = Math.max(0, localPlayerData.needs.hygiene - 1);
+          if (survivalTick % 8 === 0) localPlayerData.needs.toilet = Math.max(0, localPlayerData.needs.toilet - 1);
           
           if (localPlayerData.needs.hunger === 0 || localPlayerData.needs.thirst === 0) {
-             localPlayerData.health = Math.max(0, localPlayerData.health - 5);
-             if (localPlayerData.health === 0) {
-                showDeathOverlay();
+             // Only take health damage if we actually ticked down hunger/thirst on this cycle
+             if (survivalTick % 3 === 0 || survivalTick % 5 === 0) {
+                 localPlayerData.health = Math.max(0, localPlayerData.health - 5);
+                 if (localPlayerData.health === 0) {
+                    showDeathOverlay();
+                 }
              }
           }
 
@@ -1225,8 +1236,8 @@
 
           npcSprites.forEach(function(npc) {
             if (npc._needs) {
-              npc._needs.hunger = Math.max(0, npc._needs.hunger - 1);
-              npc._needs.thirst = Math.max(0, npc._needs.thirst - 1);
+              if (survivalTick % 5 === 0) npc._needs.hunger = Math.max(0, npc._needs.hunger - 1);
+              if (survivalTick % 3 === 0) npc._needs.thirst = Math.max(0, npc._needs.thirst - 1);
               updateNeedsBubble(scene, npc, npc._needs);
             }
           });
