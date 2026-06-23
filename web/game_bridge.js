@@ -1440,6 +1440,10 @@
       building.is_completed = true;
       var type = building.type;
       
+      var bSprite = building.sprite;
+      var pos = { x: bSprite ? bSprite.x : 0, y: bSprite ? bSprite.y : 0 };
+      var tile = { tx: building.tx, ty: building.ty };
+      
       taskProgress[type] = (taskProgress[type] || 0) + 1;
       
       // Mark fence tiles as hard barriers
