@@ -1007,6 +1007,8 @@
         }
 
         if (currentBuildMode && ghostBuilding) {
+          if (ghostBuilding._isPlaced) return; // Prevent tapping through Flutter UI
+          
           // Tap sets the position and locks it, showing UI
           var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
           var tile = worldToTile(wp.x, wp.y, ox, oy);
