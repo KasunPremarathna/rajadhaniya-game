@@ -216,7 +216,7 @@
   window.flutterGameAction = function (payloadStr) {
     if (!phaserInstance || !window.__gameActive) return;
     try {
-      var payload = JSON.parse(payloadStr);
+      var payload = typeof payloadStr === 'string' ? JSON.parse(payloadStr) : payloadStr;
       var scene = phaserInstance.scene.scenes[0];
       if (!scene) return;
 
