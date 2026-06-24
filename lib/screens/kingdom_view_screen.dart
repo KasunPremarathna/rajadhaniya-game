@@ -22,6 +22,7 @@ class KingdomViewScreen extends StatefulWidget {
 class _KingdomViewScreenState extends State<KingdomViewScreen> {
   Map<String, dynamic>? _hudData;
   Timer? _cloudSyncTimer;
+  Timer? _updateCheckTimer;
   bool _isBuildConfirmVisible = false;
   BuildContext? _contextualMenuContext;
   BuildContext? _attackMenuContext;
@@ -36,11 +37,16 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     
     // Start background cloud sync every 60 seconds
     _cloudSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) => _syncToCloud());
+    // Check for game asset updates periodically
+    _updateCheckTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      JsBridge.callJs('checkRemoteAssetVersion', {});
+    });
   }
 
   @override
   void dispose() {
     _cloudSyncTimer?.cancel();
+    _updateCheckTimer?.cancel();
     super.dispose();
   }
 
@@ -158,6 +164,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       setState(() => _isBuildConfirmVisible = false);
     } else if (type == 'show_contextual_menu') {
       _showContextualMenu(data);
+    } else if (type == 'show_building_details') {
+      _showBuildingDetails(data);
     } else if (type == 'close_contextual_menu') {
       if (_contextualMenuContext != null && Navigator.canPop(_contextualMenuContext!)) {
         Navigator.pop(_contextualMenuContext!);
@@ -169,7 +177,71 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       _showDeathOverlay();
     } else if (type == 'show_era_completion') {
       _showEraCompletion();
+    } else if (type == 'era_upgraded') {
+      _showEraUpgraded(data);
     }
+  }
+
+  void _showBuildingDetails(Map<String, dynamic> data) {
+    final buildingType = data['buildingType'] ?? 'Unknown';
+    final nameEn = buildingType.toString().split('_').map((e) => e.substring(0, 1).toUpperCase() + e.substring(1)).join(' ');
+    final displayName = _translate(nameEn);
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.95),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 2),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 24),
+              Icon(Icons.business, color: const Color(0xFFD4A017), size: 48),
+              const SizedBox(height: 16),
+              Text(
+                displayName,
+                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Level 1',
+                style: TextStyle(color: Colors.white54, fontSize: 16),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  JsBridge.callJs('flutterGameAction', {
+                    'action': 'remove_building',
+                    'tx': data['buildingData']?['tx'],
+                    'ty': data['buildingData']?['ty'],
+                  });
+                },
+                icon: const Icon(Icons.delete, color: Colors.white),
+                label: Text(_translate('Demolish'), style: const TextStyle(color: Colors.white)),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(_translate('Close'), style: const TextStyle(color: Colors.white54)),
+              )
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showExitDialog() async {
@@ -757,9 +829,6 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
 
   Widget _buildResourceBar() {
     // Fallback to 0 if HUD data is not yet received
-    final tasks = _hudData?['tasks'] ?? {};
-    final config = _hudData?['config'] ?? {};
-
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
@@ -772,12 +841,6 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         children: [
           _buildResourceItem('🪙', _translate('Gold'), _hudData?['gold'] ?? 500),
           _buildDivider(),
-          _buildResourceTaskItem('🪵', _translate('Wood'), 'wood', tasks, config, rate: _hudData?['woodRate']),
-          _buildDivider(),
-          _buildResourceTaskItem('💎', _translate('Gems'), 'gem', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🏹', _translate('Food'), 'hunting', tasks, config),
-          _buildDivider(),
           _buildResourceItem('🥩', _translate('Meat'), _hudData?['meat'] ?? 0, rate: _hudData?['meatRate']),
           _buildDivider(),
           _buildResourceItem('🥛', _translate('Milk'), _hudData?['milk'] ?? 0, rate: _hudData?['milkRate']),
@@ -789,7 +852,29 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
 
   Widget _buildTaskBar() {
     final tasks = _hudData?['tasks'] ?? {};
-    final config = _hudData?['config'] ?? {};
+    final config = _hudData?['taskConfig'] ?? {};
+    
+    if (config.isEmpty) return const SizedBox.shrink();
+
+    List<Widget> taskWidgets = [];
+    config.forEach((key, taskCfg) {
+      taskWidgets.add(
+        _buildResourceTaskItem(
+          taskCfg['icon']?.toString() ?? '📌', 
+          taskCfg['label']?.toString() ?? key.toString(), 
+          key.toString(), 
+          tasks, 
+          config
+        )
+      );
+      taskWidgets.add(_buildDivider());
+    });
+    
+    // Remove last divider if not empty
+    if (taskWidgets.isNotEmpty) {
+      taskWidgets.removeLast();
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
@@ -799,21 +884,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildResourceTaskItem('🏠', _translate('House'), 'house', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🛖', _translate('Hut'), 'workers_hut', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🏛️', _translate('Temple'), 'temple', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('💧', _translate('Lake'), 'lake', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🛶', _translate('Boat'), 'boat_house', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🐟', _translate('Fish'), 'fish', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🚧', _translate('Fence'), 'fence', tasks, config),
-        ],
+        children: taskWidgets,
       ),
     );
   }
@@ -1046,6 +1117,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     final ty = data['ty'];
     final cost = data['cost'] ?? 100;
     final List<dynamic> yields = data['yields'] ?? [];
+    final bool isEraUpgradeReady = data['isEraUpgradeReady'] ?? false;
+    final bool isTownHall = data['isTownHall'] ?? false;
 
     final labelMap = {
       'tree': 'Tree', 'deer': 'Deer', 'gem_rock': 'Gem Rock', 'lake': 'Lake', 'fence': 'Fence', 
@@ -1211,6 +1284,28 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
 
                   // Needs Actions
                   const SizedBox(height: 12),
+                  if (isTownHall) ...[
+                     ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isEraUpgradeReady ? const Color(0xFFD4A017) : Colors.grey,
+                          side: BorderSide(color: isEraUpgradeReady ? Colors.white : Colors.black54),
+                          minimumSize: const Size(double.infinity, 44),
+                        ),
+                        icon: const Icon(Icons.upgrade, color: Colors.black),
+                        label: Text(
+                          isEraUpgradeReady 
+                            ? (_language == 'si' ? 'ඊළඟ යුගයට යන්න' : 'Advance to Next Era')
+                            : (_language == 'si' ? 'අරමුණු සම්පූර්ණ කරන්න' : 'Complete Tasks to Upgrade'),
+                          style: TextStyle(color: isEraUpgradeReady ? Colors.black : Colors.black54, fontWeight: FontWeight.bold)
+                        ),
+                        onPressed: isEraUpgradeReady ? () {
+                          Navigator.pop(ctx);
+                          _contextualMenuContext = null;
+                          JsBridge.callJs('flutterGameAction', {'action': 'upgrade_era'});
+                        } : null,
+                      ),
+                      const SizedBox(height: 12),
+                  ],
                   if (resType == 'farm' || resType == 'deer')
                     _buildNeedsButton('🍔', _language == 'si' ? 'ආහාර ගන්න' : 'Eat Food', () {
                       JsBridge.callJs('flutterGameAction', {'action': 'feed_player', 'amount': 40});
@@ -1367,6 +1462,72 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         );
       },
     );
+  }
+
+  void _showEraUpgraded(Map<String, dynamic> data) {
+    final newEraName = data['newEraName'] ?? 'Next Era';
+    
+    // Save to Firestore explicitly
+    if (_hudData != null) {
+      _hudData!['era_id'] = data['newEraId'];
+      _hudData!['era_name'] = newEraName;
+      _hudData!['tasks'] = {};
+      _syncToCloud();
+    }
+    
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      transitionDuration: const Duration(milliseconds: 500),
+      pageBuilder: (context, anim1, anim2) {
+        return Center(
+          child: ScaleTransition(
+            scale: CurvedAnimation(parent: anim1, curve: Curves.elasticOut),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F1A17),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD4AF37), width: 3),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.auto_awesome, color: Color(0xFFD4AF37), size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    _language == 'si' ? 'නව යුගයකට පිවිසේ!' : 'Era Advancing!',
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    newEraName.toString(),
+                    style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 18, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                  ),
+                  const SizedBox(height: 16),
+                  const CircularProgressIndicator(color: Color(0xFFD4AF37)),
+                  const SizedBox(height: 16),
+                  Text(
+                    _language == 'si' ? 'ලෝකය නැවත ගොඩනැගෙමින් පවතී...' : 'Rebuilding the world...',
+                    style: const TextStyle(color: Colors.white70, fontSize: 14, decoration: TextDecoration.none),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    
+    // Pop the dialog after 2.5 seconds, then reboot Phaser after animation completes
+    Future.delayed(const Duration(milliseconds: 2500), () async {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        await Future.delayed(const Duration(milliseconds: 600)); // wait for 500ms pop transition
+        JsBridge.callJs('flutterGameAction', {'action': 'force_reboot'});
+      }
+    });
   }
 
   void _showEraCompletion() {

@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.3.45';
+  var GAME_ASSET_VERSION = 'v1.4.2';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -13,18 +13,7 @@
   var TILE_H = 8;
   var GRID = 400;
 
-  var TASKS_CONFIG = {
-    hunting:     { req: 3, icon: '🏹', label: 'Hunting',      sinLabel: 'වන සතුන් දඩයම', resType: 'deer' },
-    wood:        { req: 10, icon: '🪵', label: 'Wood Scraping', sinLabel: 'දැව එකතු කිරීම', resType: 'tree' },
-    gem:         { req: 5,  icon: '💎', label: 'Gem Mining',    sinLabel: 'මැණික්/ගල් කැණීම', resType: 'gem_rock' },
-    house:       { req: 1, icon: '🏠', label: 'Build House',       sinLabel: 'නිවසක් හදන්න' },
-    workers_hut: { req: 1, icon: '🛖', label: 'Workers Hut',       sinLabel: 'කම්කරු නිවස' },
-    temple:      { req: 1, icon: '🏛️', label: 'Build Temple',      sinLabel: 'පන්සලක් හදන්න' },
-    boat_house:  { req: 1, icon: '🛶', label: 'Boat House',        sinLabel: 'බෝට්ටු නිවස' },
-    lake:        { req: 1, icon: '💧', label: 'Dig Lake',          sinLabel: 'වැවක් හදන්න' },
-    fish:        { req: 5, icon: '🐟', label: 'Harvest Fish',      sinLabel: 'මාළු අල්ලන්න' },
-    fence:       { req: 5, icon: '🚧', label: 'Build Fence',       sinLabel: 'වැටක් ගහන්න' }
-  };
+  var TASKS_CONFIG = {};
 
   /* ════════════════════════════════════════════════════════
      Runtime State
@@ -195,11 +184,9 @@
   };
 
   window.forceAssetUpdate = function () {
-    console.log('[Cache] force update');
+    console.log('[Cache] force update - reloading page');
     localStorage.removeItem(STORAGE_KEY);
-    bootPhaserGame(true);
-    /* Notify Flutter the game is starting after forced update */
-    window.notifyFlutter({ type: 'game_started' });
+    window.location.reload(true);
   };
 
   window.checkAssetVersion = function () {
@@ -211,6 +198,24 @@
         expectedVersion: GAME_ASSET_VERSION,
       });
     }
+  };
+
+  window.checkRemoteAssetVersion = function() {
+    fetch('version.json?t=' + new Date().getTime())
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data && data.version) {
+          var remoteVersion = data.version;
+          if (remoteVersion !== GAME_ASSET_VERSION) {
+            console.log('[Cache] Remote update detected: ' + remoteVersion);
+            window.notifyFlutter({
+              type: 'version_mismatch',
+              storedVersion: GAME_ASSET_VERSION,
+              expectedVersion: remoteVersion
+            });
+          }
+        }
+      }).catch(function(e) { console.error('[Bridge] Update check failed:', e); });
   };
 
   window.flutterGameAction = function (payloadStr) {
@@ -246,6 +251,10 @@
          if (typeof scene._toiletPlayer === 'function') scene._toiletPlayer();
       } else if (payload.action === 'close_menu') {
          isMenuOpen = false;
+      } else if (payload.action === 'upgrade_era') {
+         if (typeof scene._upgradeEra === 'function') scene._upgradeEra();
+      } else if (payload.action === 'force_reboot') {
+         if (window.forceAssetUpdate) window.forceAssetUpdate();
       }
     } catch (e) {
       console.error('[Bridge] Failed to parse flutterGameAction payload:', e);
@@ -822,7 +831,7 @@
         scene.cameras.main.setZoom(Phaser.Math.Clamp(newZoom, 0.6, 2.0));
       });
 
-      var pinchState = { pinching: false, startDist: 0, startZoom: 1 };
+      var pinchState = { pinching: false, startDist: 0, startZoom: 1, cooldown: false };
 
       /* place resource sprites */
       placeResources(scene, ox, oy);
@@ -940,11 +949,21 @@
           }
           return;
         } else if (ptr.isDown && !currentBuildMode && !editMode) {
+          if (pinchState.pinching) {
+             pinchState.pinching = false;
+             pinchState.cooldown = true;
+             setTimeout(function() { pinchState.cooldown = false; }, 250);
+          }
+          if (pinchState.cooldown) return;
           // Pan camera
           scene.cameras.main.scrollX -= (ptr.x - ptr.prevPosition.x) / scene.cameras.main.zoom;
           scene.cameras.main.scrollY -= (ptr.y - ptr.prevPosition.y) / scene.cameras.main.zoom;
         } else {
-          pinchState.pinching = false;
+          if (pinchState.pinching) {
+             pinchState.pinching = false;
+             pinchState.cooldown = true;
+             setTimeout(function() { pinchState.cooldown = false; }, 250);
+          }
         }
 
         if (currentBuildMode && ghostBuilding && !ghostBuilding._isPlaced) {
@@ -982,6 +1001,16 @@
           }
         });
       });
+
+      scene._removeBuilding = function(tx, ty) {
+        var bData = null;
+        for (var i = 0; i < scene._buildings.length; i++) {
+          if (scene._buildings[i].tx === tx && scene._buildings[i].ty === ty) {
+            bData = scene._buildings[i]; break;
+          }
+        }
+        if (bData) removeBuilding(scene, bData);
+      };
 
       scene.input.on('pointerup', function (ptr) {
         if (longPressTimer) { longPressTimer.remove(false); longPressTimer = null; }
@@ -1031,7 +1060,12 @@
           var res = resourceSprites[i];
           var rx = (res.sprite && res.sprite._tileX !== undefined) ? res.sprite._tileX : res.tileX;
           var ry = (res.sprite && res.sprite._tileY !== undefined) ? res.sprite._tileY : res.tileY;
-          if (tile.tx >= rx && tile.tx < rx + 4 && tile.ty >= ry && tile.ty < ry + 4) {
+          var inFootprint = (tile.tx >= rx && tile.tx < rx + 4 && tile.ty >= ry && tile.ty < ry + 4);
+          var inSprite = false;
+          if (res.sprite && res.sprite.getBounds) {
+             inSprite = res.sprite.getBounds().contains(wp.x, wp.y);
+          }
+          if (inFootprint || inSprite) {
             clickedRes = res;
             break;
           }
@@ -1040,7 +1074,12 @@
         if (!clickedRes) {
           for (var i = 0; i < scene._buildings.length; i++) {
             var b = scene._buildings[i];
-            if (tile.tx >= b.tx && tile.tx < b.tx + b.w && tile.ty >= b.ty && tile.ty < b.ty + b.h) {
+            var inFootprint = (tile.tx >= b.tx && tile.tx < b.tx + b.w && tile.ty >= b.ty && tile.ty < b.ty + b.h);
+            var inSprite = false;
+            if (b.sprite && b.sprite.getBounds) {
+               inSprite = b.sprite.getBounds().contains(wp.x, wp.y);
+            }
+            if (inFootprint || inSprite) {
               if (b.type === 'fence') {
                 clickedRes = { type: 'fence', sprite: b.sprite, isBuilding: true, buildingData: b };
                 break;
@@ -1095,7 +1134,8 @@
         // Allow instantly inspecting buildings without needing a selected unit or walking to it
         if (clickedRes && clickedRes.isBuilding) {
           if (clickedRes.buildingData && clickedRes.buildingData.is_completed === false) {
-             floatText(scene, 'Under Construction!', tileToWorld(tile.tx, tile.ty, ox, oy).x, tileToWorld(tile.tx, tile.ty, ox, oy).y - 40, '#FF4444');
+             var pos = tileToWorld(clickedRes.buildingData.tx, clickedRes.buildingData.ty, ox, oy);
+             floatText(scene, 'Under Construction!', pos.x, pos.y - 40, '#FF4444');
              return;
           }
           if (clickedRes.type === 'fence') {
@@ -1104,7 +1144,11 @@
           } else {
             if (activeFenceOverlay) { activeFenceOverlay.destroy(); activeFenceOverlay = null; }
             if (isMenuOpen) closeContextualMenu(scene);
-            createContextualMenu(scene, clickedRes);
+            window.notifyFlutter({
+              type: 'show_building_details',
+              buildingType: clickedRes.type,
+              buildingData: clickedRes.buildingData
+            });
           }
           return;
         }
@@ -1979,8 +2023,16 @@
         tx: tx,
         ty: ty,
         yields: yields,
-        cost: GLOBAL_CONFIG.treeClearCost || 100
+        cost: GLOBAL_CONFIG.treeClearCost || 100,
+        isEraUpgradeReady: window.isEraUpgradeReady,
+        isTownHall: res.type === 'workers_hut'
       });
+
+      scene._upgradeEra = function() {
+        if (window.isEraUpgradeReady && res.type === 'workers_hut') {
+          transitionToNextEra(scene);
+        }
+      };
 
       scene._startHarvest = function(tX, tY, tKey) {
         if (tX === tx && tY === ty) {
@@ -2712,6 +2764,7 @@
       window.notifyFlutter({
         type: 'hud_update',
         tasks: taskProgress,
+        taskConfig: TASKS_CONFIG,
         gold: localPlayerData.gold,
         needs: localPlayerData.needs,
         health: localPlayerData.health,
@@ -2725,6 +2778,38 @@
       });
       window.__forceSync = false;
       checkEraCompletion(scene);
+    }
+
+    function transitionToNextEra(scene) {
+      if (!window.__gameMaster || !window.__gameMaster.eras) return;
+      var eras = window.__gameMaster.eras;
+      var currentIndex = eras.findIndex(function(e) { return e.id === localPlayerData.eraId; });
+      if (currentIndex === -1 || currentIndex >= eras.length - 1) return; // Max era
+
+      var nextEra = eras[currentIndex + 1];
+      
+      // Visual celebration
+      playHarvestEffect(scene, playerSprite.x, playerSprite.y, 'spark');
+      floatText(scene, window.gameLanguage === 'si' ? nextEra.name + ' යුගයට පිවිසේ!' : 'Entering ' + nextEra.englishName + '!', playerSprite.x, playerSprite.y - 100, '#FFD700');
+
+      // Update state
+      localPlayerData.eraId = nextEra.id;
+      localPlayerData.eraName = nextEra.name;
+      
+      // Reset Tasks
+      taskProgress = {};
+      window.isEraUpgradeReady = false;
+      
+      // Save state
+      localStorage.setItem('rajadhaniya_player_data', JSON.stringify(localPlayerData));
+      localStorage.setItem('rajadhaniya_task_progress', JSON.stringify(taskProgress));
+      
+      // Notify flutter to show overlay, Flutter will call force_reboot after animation
+      window.notifyFlutter({
+        type: 'era_upgraded',
+        newEraId: nextEra.id,
+        newEraName: nextEra.name
+      });
     }
   }
 

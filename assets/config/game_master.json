@@ -12,7 +12,14 @@
       "bonus": "Hunting & Stone Tools +30%",
       "icon": "🏹",
       "lat": 6.6521,
-      "lng": 80.6922
+      "lng": 80.6922,
+      "tasks": {
+        "hunting": { "req": 3, "icon": "🏹", "label": "Hunting", "sinLabel": "වන සතුන් දඩයම", "resType": "deer" },
+        "wood": { "req": 10, "icon": "🪵", "label": "Wood Scraping", "sinLabel": "දැව එකතු කිරීම", "resType": "tree" },
+        "gem": { "req": 5, "icon": "💎", "label": "Gem Mining", "sinLabel": "මැණික්/ගල් කැණීම", "resType": "gem_rock" },
+        "house": { "req": 1, "icon": "🏠", "label": "Build House", "sinLabel": "නිවසක් හදන්න" },
+        "workers_hut": { "req": 1, "icon": "🛖", "label": "Maha Wadi Gedara", "sinLabel": "මහ වාඩි ගෙදර" }
+      }
     },
     {
       "id": "anuradhapura",
@@ -22,7 +29,15 @@
       "bonus": "Farming & Irrigation +25%",
       "icon": "🌾",
       "lat": 8.3114,
-      "lng": 80.4037
+      "lng": 80.4037,
+      "tasks": {
+        "farm": { "req": 2, "icon": "🌾", "label": "Build Farms", "sinLabel": "ගොවිපලවල් හදන්න" },
+        "lake": { "req": 1, "icon": "💧", "label": "Dig Lake", "sinLabel": "වැවක් හදන්න" },
+        "fish": { "req": 10, "icon": "🐟", "label": "Harvest Fish", "sinLabel": "මාළු අල්ලන්න" },
+        "temple": { "req": 1, "icon": "🏛️", "label": "Build Temple", "sinLabel": "පන්සලක් හදන්න" },
+        "boat_house": { "req": 1, "icon": "🛶", "label": "Boat House", "sinLabel": "බෝට්ටු නිවස" },
+        "cow_farm": { "req": 1, "icon": "🐄", "label": "Cow Farm", "sinLabel": "එළකිරි ගොවිපල" }
+      }
     },
     {
       "id": "polonnaruwa",
@@ -32,7 +47,11 @@
       "bonus": "Gold & International Trade +20%",
       "icon": "🏯",
       "lat": 7.9403,
-      "lng": 81.0028
+      "lng": 81.0028,
+      "tasks": {
+        "gold": { "req": 500, "icon": "🪙", "label": "Amass Gold", "sinLabel": "රත්‍රන් එකතු කිරීම" },
+        "mine": { "req": 2, "icon": "⛏️", "label": "Build Mines", "sinLabel": "පතල් හදන්න" }
+      }
     },
     {
       "id": "transitional",

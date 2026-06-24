@@ -33,10 +33,14 @@ void main() async {
         await Firebase.initializeApp();
       }
     }
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+    } catch (e) {
+      debugPrint('Firestore persistence could not be enabled: $e');
+    }
     registerPhaserView();
     final prefs = await SharedPreferences.getInstance();
     final initialLang = prefs.getString('selected_language');
