@@ -25,6 +25,13 @@ class _GameViewWidgetState extends State<GameViewWidget> {
           JsBridge.handleWebViewMessage(message.message);
         },
       )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) {
+            JsBridge.handleWebViewMessage('{"type": "webview_ready"}');
+          },
+        ),
+      )
       ..loadRequest(Uri.parse('https://rajadhanigamesl.web.app/game.html?v=${DateTime.now().millisecondsSinceEpoch}'));
       
     // Set global reference for JsBridge to execute JS

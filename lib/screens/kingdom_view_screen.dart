@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../bridge/js_bridge.dart';
@@ -21,9 +22,13 @@ class KingdomViewScreen extends StatefulWidget {
 
 class _KingdomViewScreenState extends State<KingdomViewScreen> {
   Map<String, dynamic>? _hudData;
+  Map<String, dynamic>? _cloudDataCache;
   Timer? _cloudSyncTimer;
   Timer? _updateCheckTimer;
   bool _isBuildConfirmVisible = false;
+  int _buildConfirmCount = 1;
+  int _buildConfirmTime = 5;
+  int _buildConfirmCost = 2;
   BuildContext? _contextualMenuContext;
   BuildContext? _attackMenuContext;
 
@@ -68,13 +73,20 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     _language = prefs.getString('selected_language') ?? 'en';
     if (!mounted) return;
 
-    // Load cloud save data and inject into localPlayerData via JS
-    final cloudData = await FirestoreService.loadUserData();
-    if (cloudData != null) {
-      JsBridge.callJs('restorePlayerData', cloudData);
+    // Load cloud save data
+    _cloudDataCache = await FirestoreService.loadUserData();
+
+    // If on web, the JS is already injected and ready.
+    if (kIsWeb) {
+      _bootGameEngine();
+    }
+  }
+
+  void _bootGameEngine() {
+    if (_cloudDataCache != null) {
+      JsBridge.callJs('restorePlayerData', _cloudDataCache!);
     }
 
-    // Boot the game now that we bypassed EraSelectionScreen
     WidgetsBinding.instance.addPostFrameCallback((_) {
       JsBridge.callInitGameGrid(
         widget.era.id,
@@ -158,8 +170,22 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           ),
         ),
       );
+    } else if (type == 'update_build_confirm') {
+      setState(() {
+        _buildConfirmCount = data['count'] ?? 1;
+        _buildConfirmTime = data['time'] ?? 5;
+        _buildConfirmCost = data['wood'] ?? 2;
+      });
     } else if (type == 'show_build_confirm') {
-      setState(() => _isBuildConfirmVisible = true);
+      setState(() {
+        _isBuildConfirmVisible = true;
+        // Default values for single placement fallback
+        if (data['count'] == null) {
+           _buildConfirmCount = 1;
+           _buildConfirmTime = 5;
+           _buildConfirmCost = 2;
+        }
+      });
     } else if (type == 'close_build_confirm') {
       setState(() => _isBuildConfirmVisible = false);
     } else if (type == 'show_contextual_menu') {
@@ -179,6 +205,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       _showEraCompletion();
     } else if (type == 'era_upgraded') {
       _showEraUpgraded(data);
+    } else if (type == 'webview_ready') {
+      _bootGameEngine();
     }
   }
 
@@ -187,57 +215,58 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     final nameEn = buildingType.toString().split('_').map((e) => e.substring(0, 1).toUpperCase() + e.substring(1)).join(' ');
     final displayName = _translate(nameEn);
     
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
       builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.95),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 2),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 24),
-              Icon(Icons.business, color: const Color(0xFFD4A017), size: 48),
-              const SizedBox(height: 16),
-              Text(
-                displayName,
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Level 1',
-                style: TextStyle(color: Colors.white54, fontSize: 16),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  minimumSize: const Size(double.infinity, 50),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 320),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 2),
+            ),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.business, color: const Color(0xFFD4A017), size: 40),
+                const SizedBox(height: 12),
+                Text(
+                  displayName,
+                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                onPressed: () {
-                  Navigator.pop(context);
-                  JsBridge.callJs('flutterGameAction', {
-                    'action': 'remove_building',
-                    'tx': data['buildingData']?['tx'],
-                    'ty': data['buildingData']?['ty'],
-                  });
-                },
-                icon: const Icon(Icons.delete, color: Colors.white),
-                label: Text(_translate('Demolish'), style: const TextStyle(color: Colors.white)),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(_translate('Close'), style: const TextStyle(color: Colors.white54)),
-              )
-            ],
+                const SizedBox(height: 4),
+                const Text(
+                  'Level 1',
+                  style: TextStyle(color: Colors.white54, fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    minimumSize: const Size(double.infinity, 44),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    JsBridge.callJs('flutterGameAction', {
+                      'action': 'remove_building',
+                      'tx': data['buildingData']?['tx'],
+                      'ty': data['buildingData']?['ty'],
+                    });
+                  },
+                  icon: const Icon(Icons.delete, color: Colors.white),
+                  label: Text(_translate('Demolish'), style: const TextStyle(color: Colors.white)),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(_translate('Close'), style: const TextStyle(color: Colors.white54)),
+                )
+              ],
+            ),
           ),
         );
       },
@@ -1061,10 +1090,30 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
   // --- Flutter Popup Implementations ---
 
   Widget _buildConfirmOverlay() {
-    return Row(
+    return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Confirm Button
+        if (_buildConfirmCount > 1)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            margin: const EdgeInsets.only(bottom: 24),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFD4A017), width: 1.5),
+              boxShadow: [BoxShadow(color: const Color(0xFFD4A017).withValues(alpha: 0.4), blurRadius: 10)],
+            ),
+            child: Text(
+              _language == 'si' 
+                  ? '🧱 වැටවල් $_buildConfirmCount | 🪵 දැව $_buildConfirmCost | ⏳ ${_buildConfirmTime}s'
+                  : '🧱 $_buildConfirmCount Fences | 🪵 $_buildConfirmCost Wood | ⏳ ${_buildConfirmTime}s',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Confirm Button
         GestureDetector(
           onTap: () {
             setState(() => _isBuildConfirmVisible = false);
@@ -1098,6 +1147,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
             ),
             child: const Icon(Icons.close, color: Colors.white, size: 32),
           ),
+        ),
+          ],
         ),
       ],
     );

@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.4.2';
+  var GAME_ASSET_VERSION = 'v1.4.5';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -58,6 +58,12 @@
   var ghostBuilding = null;
   var buildConfirmElements = null;
   var GLOBAL_CONFIG = { treeClearCost: 100 };
+  /* Drag-and-Drop Fences */
+  var isDragBuilding = false;
+  var dragStartTile = null;
+  var dragFenceCoords = [];
+  var dragFenceGhosts = [];
+  var dragArrows = [];
   /* Edit / Drag-and-Drop globals */
   var editMode = null;        // holds the building object being repositioned
   var editGhost = null;       // ghost sprite shown while dragging
@@ -152,7 +158,10 @@
     window.__gameState = { eraId: eId, originLat: eLat, originLng: eLng };
 
     var stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === GAME_ASSET_VERSION) {
+    if (!stored || stored === GAME_ASSET_VERSION) {
+      if (!stored) {
+        localStorage.setItem(STORAGE_KEY, GAME_ASSET_VERSION);
+      }
       console.log('[Cache] match (' + GAME_ASSET_VERSION + ') – booting');
       bootPhaserGame(false);
       /* Notify Flutter that the game is starting (cache-hit path) */
@@ -392,6 +401,82 @@
     var dx = tx - targetRes.tileX;
     var dy = ty - targetRes.tileY;
     return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function findEnclosedFencedAreas(scene) {
+    var minX = GRID, maxX = -1, minY = GRID, maxY = -1;
+    var fenceTiles = {};
+    for (var i=0; i<scene._buildings.length; i++) {
+      var b = scene._buildings[i];
+      if (b.type === 'fence') {
+        for(var r=0; r<4; r++) {
+          for(var c=0; c<4; c++) {
+            var ftx = b.tx + c;
+            var fty = b.ty + r;
+            fenceTiles[ftx+','+fty] = true;
+            if (ftx < minX) minX = ftx;
+            if (ftx > maxX) maxX = ftx;
+            if (fty < minY) minY = fty;
+            if (fty > maxY) maxY = fty;
+          }
+        }
+      }
+    }
+    if (maxX < 0) return []; // No fences
+
+    minX -= 1; maxX += 1;
+    minY -= 1; maxY += 1;
+    minX = Math.max(0, minX);
+    maxX = Math.min(GRID - 1, maxX);
+    minY = Math.max(0, minY);
+    maxY = Math.min(GRID - 1, maxY);
+
+    var visited = {};
+    var queue = [];
+    for (var x = minX; x <= maxX; x++) { queue.push({x: x, y: minY}); queue.push({x: x, y: maxY}); }
+    for (var y = minY + 1; y <= maxY - 1; y++) { queue.push({x: minX, y: y}); queue.push({x: maxX, y: y}); }
+
+    var head = 0;
+    while(head < queue.length) {
+      var curr = queue[head++];
+      var key = curr.x + ',' + curr.y;
+      if (visited[key]) continue;
+      if (fenceTiles[key]) continue; // Fences block the flood fill
+      
+      visited[key] = true;
+      var nx, ny;
+      nx = curr.x - 1; ny = curr.y;
+      if (nx >= minX && !visited[nx+','+ny] && !fenceTiles[nx+','+ny]) queue.push({x:nx, y:ny});
+      nx = curr.x + 1; ny = curr.y;
+      if (nx <= maxX && !visited[nx+','+ny] && !fenceTiles[nx+','+ny]) queue.push({x:nx, y:ny});
+      nx = curr.x; ny = curr.y - 1;
+      if (ny >= minY && !visited[nx+','+ny] && !fenceTiles[nx+','+ny]) queue.push({x:nx, y:ny});
+      nx = curr.x; ny = curr.y + 1;
+      if (ny <= maxY && !visited[nx+','+ny] && !fenceTiles[nx+','+ny]) queue.push({x:nx, y:ny});
+    }
+
+    var enclosedEmpty4x4 = [];
+    for (var x = minX + 1; x < maxX - 3; x++) {
+      for (var y = minY + 1; y < maxY - 3; y++) {
+        if (!visited[x+','+y] && !fenceTiles[x+','+y]) {
+          var empty = true;
+          for (var r = 0; r < 4; r++) {
+            for (var c = 0; c < 4; c++) {
+              var k = (x+c)+','+(y+r);
+              // Must not be flood filled, not a fence, and completely empty of other things
+              if (visited[k] || fenceTiles[k] || scene._occupied[k]) {
+                empty = false; break;
+              }
+            }
+            if (!empty) break;
+          }
+          if (empty) {
+            enclosedEmpty4x4.push({x: x, y: y});
+          }
+        }
+      }
+    }
+    return { emptySpots: enclosedEmpty4x4, visitedOutside: visited, fences: fenceTiles };
   }
 
   /* ════════════════════════════════════════════════════════
@@ -969,7 +1054,11 @@
         if (currentBuildMode && ghostBuilding && !ghostBuilding._isPlaced) {
           var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
           var tile = worldToTile(wp.x, wp.y, ox, oy);
-          updateGhostBuildingPos(scene, tile.tx, tile.ty, ox, oy);
+          if (ghostBuilding._type === 'fence' && isDragBuilding) {
+             updateDragBuilding(scene, tile.tx, tile.ty, ox, oy);
+          } else {
+             updateGhostBuildingPos(scene, tile.tx, tile.ty, ox, oy);
+          }
         }
         if (editMode && editGhost) {
           var wp2 = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
@@ -985,6 +1074,15 @@
         pointerDownX = ptr.x;
         pointerDownY = ptr.y;
         if (scene.input.pointer1.isDown && scene.input.pointer2.isDown) return;
+
+        if (currentBuildMode && ghostBuilding && !ghostBuilding._isPlaced && ghostBuilding._type === 'fence') {
+          var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
+          var tile = worldToTile(wp.x, wp.y, ox, oy);
+          isDragBuilding = true;
+          dragStartTile = { tx: ghostBuilding._tileX, ty: ghostBuilding._tileY };
+          dragFenceCoords = [];
+          return;
+        }
 
         // Long-press detection for building drag-and-drop
         longPressPtr = ptr;
@@ -1038,6 +1136,12 @@
         if (currentBuildMode && ghostBuilding) {
           if (ghostBuilding._isPlaced) return; // Prevent tapping through Flutter UI
           
+          if (ghostBuilding._type === 'fence' && isDragBuilding) {
+             ghostBuilding._isPlaced = true;
+             showBuildConfirmUI(scene);
+             return;
+          }
+
           // Tap sets the position and locks it, showing UI
           var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
           var tile = worldToTile(wp.x, wp.y, ox, oy);
@@ -1258,20 +1362,20 @@
           if (window.__isDead) return;
           survivalTick++;
           
-          // Human-like timing:
-          // Thirst drops every 9 seconds (15 mins to zero)
-          // Hunger drops every 15 seconds (25 mins to zero)
-          // Toilet drops every 24 seconds (40 mins to zero)
-          // Hygiene drops every 36 seconds (60 mins to zero)
-          if (survivalTick % 5 === 0) localPlayerData.needs.hunger = Math.max(0, localPlayerData.needs.hunger - 1);
-          if (survivalTick % 3 === 0) localPlayerData.needs.thirst = Math.max(0, localPlayerData.needs.thirst - 1);
-          if (survivalTick % 12 === 0) localPlayerData.needs.hygiene = Math.max(0, localPlayerData.needs.hygiene - 1);
-          if (survivalTick % 8 === 0) localPlayerData.needs.toilet = Math.max(0, localPlayerData.needs.toilet - 1);
+          // Human-like timing (Slower):
+          // Thirst drops every 18 seconds (30 mins to zero)
+          // Hunger drops every 30 seconds (50 mins to zero)
+          // Toilet drops every 48 seconds (80 mins to zero)
+          // Hygiene drops every 72 seconds (120 mins to zero)
+          if (survivalTick % 10 === 0) localPlayerData.needs.hunger = Math.max(0, localPlayerData.needs.hunger - 1);
+          if (survivalTick % 6 === 0) localPlayerData.needs.thirst = Math.max(0, localPlayerData.needs.thirst - 1);
+          if (survivalTick % 24 === 0) localPlayerData.needs.hygiene = Math.max(0, localPlayerData.needs.hygiene - 1);
+          if (survivalTick % 16 === 0) localPlayerData.needs.toilet = Math.max(0, localPlayerData.needs.toilet - 1);
           
           if (localPlayerData.needs.hunger === 0 || localPlayerData.needs.thirst === 0) {
              // Only take health damage if we actually ticked down hunger/thirst on this cycle
-             if (survivalTick % 3 === 0 || survivalTick % 5 === 0) {
-                 localPlayerData.health = Math.max(0, localPlayerData.health - 5);
+             if (survivalTick % 6 === 0 || survivalTick % 10 === 0) {
+                 localPlayerData.health = Math.max(0, localPlayerData.health - 2); // Decreased from 5 to 2 to make it less punishing
                  if (localPlayerData.health === 0) {
                     showDeathOverlay();
                  }
@@ -1282,8 +1386,8 @@
 
           npcSprites.forEach(function(npc) {
             if (npc._needs) {
-              if (survivalTick % 5 === 0) npc._needs.hunger = Math.max(0, npc._needs.hunger - 1);
-              if (survivalTick % 3 === 0) npc._needs.thirst = Math.max(0, npc._needs.thirst - 1);
+              if (survivalTick % 10 === 0) npc._needs.hunger = Math.max(0, npc._needs.hunger - 1);
+              if (survivalTick % 6 === 0) npc._needs.thirst = Math.max(0, npc._needs.thirst - 1);
               updateNeedsBubble(scene, npc, npc._needs);
             }
           });
@@ -1309,6 +1413,80 @@
           refreshHud(scene);
         },
         loop: true
+      });
+
+      // Auto-Spawn Trees inside Fences
+      scene.time.addEvent({
+        delay: 600000, // 10 minutes
+        loop: true,
+        callback: function() {
+          if (window.__isDead) return;
+          var enclosedData = findEnclosedFencedAreas(scene);
+          var spots = enclosedData.emptySpots;
+          if (spots.length > 0) {
+             // Pick a random spot
+             var spot = spots[Phaser.Math.Between(0, spots.length - 1)];
+             var tx = spot.x;
+             var ty = spot.y;
+             
+             // Count trees in THIS specific fenced area
+             var treeMap = {};
+             for(var i=0; i<resourceSprites.length; i++) {
+               if(resourceSprites[i].type === 'tree') {
+                 treeMap[resourceSprites[i].tileX + ',' + resourceSprites[i].tileY] = true;
+               }
+             }
+             
+             var innerVisited = {};
+             var innerQueue = [{x: tx, y: ty}];
+             var treesInThisArea = 0;
+             var hd = 0;
+             while(hd < innerQueue.length) {
+                var c = innerQueue[hd++];
+                var k = c.x+','+c.y;
+                if(innerVisited[k]) continue;
+                innerVisited[k] = true;
+                
+                if (treeMap[k]) treesInThisArea++;
+                
+                var neighbors = [
+                  {x: c.x-1, y: c.y}, {x: c.x+1, y: c.y},
+                  {x: c.x, y: c.y-1}, {x: c.x, y: c.y+1}
+                ];
+                for(var ni=0; ni<4; ni++) {
+                  var nn = neighbors[ni];
+                  var nk = nn.x+','+nn.y;
+                  if (nn.x >= 0 && nn.x < GRID && nn.y >= 0 && nn.y < GRID) {
+                     if (!enclosedData.visitedOutside[nk] && !enclosedData.fences[nk] && !innerVisited[nk]) {
+                       innerQueue.push(nn);
+                     }
+                  }
+                }
+             }
+             
+             if (treesInThisArea >= 50) return; // Cap at 50 trees per fenced area
+             
+             // Spawn tree
+             var iso = tileToWorld(tx, ty, ox, oy);
+             var spr = scene.add.image(iso.x, iso.y, 'tree').setOrigin(0.5, 0.8).setDepth(tx + ty + 1).setScale(0.12);
+             var resObj = {
+               type: 'tree',
+               tileX: tx, tileY: ty,
+               sprite: spr,
+               isHarvesting: false,
+               maxYield: 50,
+               currentYield: 50
+             };
+             resourceSprites.push(resObj);
+             for(var r=0; r<4; r++){
+               for(var c=0; c<4; c++){
+                 scene._occupied[(tx+c) + ',' + (ty+r)] = true;
+               }
+             }
+             playHarvestEffect(scene, iso.x, iso.y, 'spark');
+             floatText(scene, '+ 🌱', iso.x, iso.y - 40, '#4CAF50');
+          }
+        }
       });
 
       refreshHud(scene);
@@ -1343,9 +1521,83 @@
       ghostBuilding._isValid = valid;
       ghostBuilding.setTint(valid ? 0x4CAF50 : 0xFF6B6B);
 
+      if (ghostBuilding._type === 'fence') {
+         if (!dragArrows) dragArrows = [];
+         while(dragArrows.length < 4) {
+            var text = scene.add.text(0, 0, '', {fontSize: '24px'}).setOrigin(0.5).setDepth(2000);
+            dragArrows.push(text);
+         }
+         var pR = tileToWorld(tx+4, ty, ox, oy);
+         dragArrows[0].setPosition(pR.x, pR.y).setText('➡️').setVisible(valid);
+         var pL = tileToWorld(tx-4, ty, ox, oy);
+         dragArrows[1].setPosition(pL.x, pL.y).setText('⬅️').setVisible(valid);
+         var pD = tileToWorld(tx, ty+4, ox, oy);
+         dragArrows[2].setPosition(pD.x, pD.y).setText('⬇️').setVisible(valid);
+         var pU = tileToWorld(tx, ty-4, ox, oy);
+         dragArrows[3].setPosition(pU.x, pU.y).setText('⬆️').setVisible(valid);
+      }
+
       if (buildConfirmElements) {
          showBuildConfirmUI(scene); // Redraws at new position
       }
+    }
+
+    function updateDragBuilding(scene, currentTx, currentTy, ox, oy) {
+       var dx = currentTx - dragStartTile.tx;
+       var dy = currentTy - dragStartTile.ty;
+       // Snap to largest axis
+       var useX = Math.abs(dx) > Math.abs(dy);
+       var length = useX ? Math.abs(dx) : Math.abs(dy);
+       length = Math.ceil(length / 4); // each fence is 4x4
+       var signX = useX ? Math.sign(dx) : 0;
+       var signY = useX ? 0 : Math.sign(dy);
+       
+       // Limit to max 20 fences
+       length = Math.min(20, length);
+       
+       var newCoords = [];
+       for(var i=0; i<=length; i++) {
+         var ftx = dragStartTile.tx + (signX * i * 4);
+         var fty = dragStartTile.ty + (signY * i * 4);
+         var valid = true;
+         for(var r=0; r<4; r++){
+           for(var c=0; c<4; c++){
+             var nx = ftx + c; var ny = fty + r;
+             if (nx<0 || nx>=GRID || ny<0 || ny>=GRID || scene._occupied[nx+','+ny]) valid = false;
+           }
+         }
+         newCoords.push({tx: ftx, ty: fty, valid: valid});
+       }
+       dragFenceCoords = newCoords;
+       
+       // Update ghost sprites
+       while(dragFenceGhosts.length < dragFenceCoords.length) {
+         var s = scene.add.image(0, 0, 'fence').setOrigin(0.5, 0.8).setScale(0.12).setAlpha(0.6);
+         dragFenceGhosts.push(s);
+       }
+       for(var j=0; j<dragFenceGhosts.length; j++) {
+         if (j < dragFenceCoords.length) {
+            var c = dragFenceCoords[j];
+            var iso = tileToWorld(c.tx, c.ty, ox, oy);
+            dragFenceGhosts[j].setPosition(iso.x, iso.y).setDepth(c.tx + c.ty + 2).setVisible(true);
+            dragFenceGhosts[j].setTint(c.valid ? 0x4CAF50 : 0xFF6B6B);
+         } else {
+            dragFenceGhosts[j].setVisible(false);
+         }
+       }
+       // hide original ghost
+       if (ghostBuilding) ghostBuilding.setVisible(false);
+       if (dragArrows) dragArrows.forEach(function(a) { a.setVisible(false); });
+       
+       var validCount = dragFenceCoords.filter(function(c) { return c.valid; }).length;
+       var totalTime = validCount * 5;
+       var totalWood = validCount * 2;
+       window.notifyFlutter({
+         type: 'update_build_confirm',
+         count: validCount,
+         time: totalTime,
+         wood: totalWood
+       });
     }
 
     function showBuildConfirmUI(scene) {
@@ -1373,6 +1625,40 @@
     }
 
     function confirmBuild(scene) {
+      if (ghostBuilding && ghostBuilding._type === 'fence' && isDragBuilding) {
+         var config = ghostBuilding._config;
+         var builtCount = 0;
+         for(var i=0; i<dragFenceCoords.length; i++) {
+            var coord = dragFenceCoords[i];
+            if (coord.valid) {
+               var costs = config.costs || {};
+               if (costs.gold && localPlayerData.gold >= costs.gold) localPlayerData.gold -= costs.gold;
+               if (costs.wood && (taskProgress['wood']||0) >= costs.wood) taskProgress['wood'] -= costs.wood;
+               
+               var durationSec = config.construction_duration_seconds || 5;
+               var completionTime = Date.now() + (durationSec * 1000);
+               var bData = {
+                 tx: coord.tx, ty: coord.ty,
+                 w: config.w, h: config.h,
+                 type: ghostBuilding._type,
+                 is_completed: false,
+                 completion_timestamp: completionTime
+               };
+               scene._buildings.push(bData);
+               var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
+               savedBuildings.push(bData);
+               localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
+               
+               startConstruction(scene, bData, config);
+               builtCount++;
+            }
+         }
+         window.__forceSync = true;
+         refreshHud(scene);
+         cancelBuild(scene);
+         return;
+      }
+
       if (!ghostBuilding || !ghostBuilding._isValid) return;
       var config = ghostBuilding._config;
       var tile = { tx: ghostBuilding._tileX, ty: ghostBuilding._tileY };
@@ -1567,6 +1853,17 @@
         ghostBuilding.destroy();
         ghostBuilding = null;
       }
+      if (dragFenceGhosts) {
+        dragFenceGhosts.forEach(function(g) { g.destroy(); });
+        dragFenceGhosts = [];
+      }
+      if (dragArrows) {
+        dragArrows.forEach(function(a) { a.destroy(); });
+        dragArrows = [];
+      }
+      isDragBuilding = false;
+      dragStartTile = null;
+      dragFenceCoords = [];
       currentBuildMode = null;
       closeBuildConfirmUI();
     }
@@ -2150,6 +2447,7 @@
              for(var r=0; r<4; r++){
                for(var c=0; c<4; c++){
                  scene._occupied[(ntx+c) + ',' + (nty+r)] = true;
+                 scene._barriers[(ntx+c) + ',' + (nty+r)] = true;
                }
              }
              var nIso = cartToIso(ntx + 1.5, nty + 1.5);
