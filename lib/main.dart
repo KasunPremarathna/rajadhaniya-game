@@ -120,6 +120,7 @@ class _RajadhaniyaAppState extends State<RajadhaniyaApp> {
       title: 'Rajadhaniya',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFF689F38), // Match Phaser grass — no black letterbox
         textTheme: GoogleFonts.notoSansSinhalaTextTheme(),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF5D4037),

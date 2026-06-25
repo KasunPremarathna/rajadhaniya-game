@@ -614,6 +614,20 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
   }
 
   void _showSenaKanda() {
+    final buildings = _hudData?['buildings'] as List? ?? [];
+    final hasBarracks = buildings.any((b) => b['type'] == 'sena_kanda' && b['is_completed'] == true);
+
+    if (!hasBarracks) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_translate('You must build a Sena Kanda (War Barracks) first!')),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -651,18 +665,21 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 alignment: WrapAlignment.center,
                 spacing: 8,
                 runSpacing: 8,
-                children: [
-                  _buildMenuCard(_translate('House'), 'house', Icons.home, 50, 5, 0),
-                  _buildMenuCard(_translate('Farm'), 'farm', Icons.agriculture, 100, 10, 0),
-                  _buildMenuCard(_translate('Cow Farm'), 'cow_farm', Icons.pets, 150, 20, 0),
-                  _buildMenuCard(_translate('Lumber Camp'), 'lumber_camp', Icons.forest, 60, 10, 0),
-                  _buildMenuCard(_translate('Mine'), 'mine', Icons.construction, 150, 5, 5),
-                  _buildMenuCard(_translate('Workers'), 'workers_hut', Icons.people, 80, 10, 0),
-                  _buildMenuCard(_translate('Temple'), 'temple', Icons.account_balance, 300, 20, 5),
-                  _buildMenuCard(_translate('Lake'), 'lake', Icons.water, 50, 5, 0),
-                  _buildMenuCard(_translate('Boat'), 'boat_house', Icons.sailing, 120, 15, 0),
-                  _buildMenuCard(_translate('Fence'), 'fence', Icons.fence, 0, 2, 0),
-                ],
+                children: GameConfig.instance.buildings.entries.map((entry) {
+                  final type = entry.key;
+                  final bData = entry.value;
+                  final name = bData['name'] ?? type;
+                  final costs = bData['costs'] ?? {};
+                  
+                  return _buildMenuCard(
+                    _translate(name),
+                    type,
+                    _getIconForBuildingType(type),
+                    costs['gold'] ?? 0,
+                    costs['wood'] ?? 0,
+                    costs['gem'] ?? 0,
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 24),
             ],
@@ -670,6 +687,23 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         )));
       },
     );
+  }
+
+  IconData _getIconForBuildingType(String type) {
+    switch (type) {
+      case 'house': return Icons.home;
+      case 'farm': return Icons.agriculture;
+      case 'cow_farm': return Icons.pets;
+      case 'lumber_camp': return Icons.forest;
+      case 'mine': return Icons.construction;
+      case 'workers_hut': return Icons.people;
+      case 'temple': return Icons.account_balance;
+      case 'lake': return Icons.water;
+      case 'boat_house': return Icons.sailing;
+      case 'fence': return Icons.fence;
+      case 'sena_kanda': return Icons.shield;
+      default: return Icons.business;
+    }
   }
 
   Widget _buildMenuCard(String label, String type, IconData icon, int goldCost, int woodCost, int gemCost) {
@@ -869,6 +903,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildResourceItem('🪙', _translate('Gold'), _hudData?['gold'] ?? 500),
+          _buildDivider(),
+          _buildResourceItem('🪵', _translate('Wood'), ((_hudData?['wood'] ?? _hudData?['tasks']?['wood']) ?? 0).toInt()),
+          _buildDivider(),
+          _buildResourceItem('💎', _translate('Gems'), ((_hudData?['gem'] ?? _hudData?['tasks']?['gem']) ?? 0).toInt()),
           _buildDivider(),
           _buildResourceItem('🥩', _translate('Meat'), _hudData?['meat'] ?? 0, rate: _hudData?['meatRate']),
           _buildDivider(),
@@ -1170,6 +1208,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     final List<dynamic> yields = data['yields'] ?? [];
     final bool isEraUpgradeReady = data['isEraUpgradeReady'] ?? false;
     final bool isTownHall = data['isTownHall'] ?? false;
+    final int assignedWorkers = data['assignedWorkers'] ?? 0;
+    final int maxWorkers = data['maxWorkers'] ?? 5;
 
     final labelMap = {
       'tree': 'Tree', 'deer': 'Deer', 'gem_rock': 'Gem Rock', 'lake': 'Lake', 'fence': 'Fence', 
@@ -1184,7 +1224,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       'lumber_camp': 'දැව කඳවුර', 'mine': 'පතල'
     };
 
-    final title = _language == 'si' ? (labelMapSi[resType] ?? resType) : (labelMap[resType] ?? resType);
+    final String configName = GameConfig.instance.buildings[resType]?['name'] ?? resType;
+    final title = _language == 'si' ? (labelMapSi[resType] ?? configName) : (labelMap[resType] ?? configName);
 
     showModalBottomSheet(
       context: context,
@@ -1296,6 +1337,31 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                         Text(_language == 'si' ? '🎁 අස්වැන්න:' : '🎁 Yield:', style: const TextStyle(color: Colors.white70)),
                         Text(yields.join('  '), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                       ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  if (isBuilding && ['workers_hut', 'lumber_camp', 'mine', 'farm', 'cow_farm', 'temple'].contains(resType)) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.people, color: Colors.blueAccent, size: 18),
+                              const SizedBox(width: 8),
+                              Text(_language == 'si' ? 'සේවකයින්:' : 'Assigned Workers:', style: const TextStyle(color: Colors.white70)),
+                            ],
+                          ),
+                          Text('$assignedWorkers / $maxWorkers', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
                   ],

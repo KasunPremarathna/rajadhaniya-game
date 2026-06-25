@@ -94,7 +94,8 @@
     "boat_house":  { "w": 8, "h": 8, "texture": "boat_house",  "costs": { "gold": 120, "wood": 15 }, "name": "Boat House", "icon": "⛵", "construction_duration_seconds": 30 },
     "cow_farm":    { "w": 8, "h": 8, "texture": "cow_farm",    "costs": { "gold": 150, "wood": 20 }, "name": "Cow Farmer Hut", "icon": "🐄", "construction_duration_seconds": 20 },
     "lumber_camp": { "w": 8, "h": 8, "texture": "workers_hut", "costs": { "gold": 60, "wood": 10 }, "name": "Lumber Camp", "icon": "🪓", "construction_duration_seconds": 15 },
-    "fence":       { "w": 4, "h": 4, "texture": "fence",       "costs": { "wood": 2 }, "name": "Fence", "icon": "🚧", "construction_duration_seconds": 5 }
+    "fence":       { "w": 4, "h": 4, "texture": "fence",       "costs": { "wood": 2 }, "name": "Fence", "icon": "🚧", "construction_duration_seconds": 0 },
+    "sena_kanda":  { "w": 12, "h": 12, "texture": "workers_hut", "costs": { "gold": 200, "wood": 25 }, "name": "Sena Kanda (War Barracks)", "icon": "⚔️", "construction_duration_seconds": 45 }
   },
   "troops": [
     {
@@ -107,6 +108,9 @@
       "unlockBuildCost": "100 Food",
       "unlockBuildTime": "10 Seconds",
       "trainingTime": "5 Seconds",
+      "attack_damage": 10,
+      "attack_range": 1,
+      "attack_speed_ms": 1500,
       "whatItDoes": "Sprints to the nearest structural fortification or enemy unit, attacking with quick Kastane sword strikes.",
       "description": "A fierce infantry foot soldier armed with a traditional blade. Highly effective when deployed in massive swarms to overwhelm outlying village structures."
     },

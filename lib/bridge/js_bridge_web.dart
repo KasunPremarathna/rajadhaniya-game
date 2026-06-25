@@ -26,6 +26,11 @@ class JsBridge {
     js.context.callMethod('enterBuildMode', [buildingType]);
   }
 
+  static void spawnTroop(Map<String, dynamic> payload) {
+    payload['action'] = 'spawn_troop';
+    callJs('flutterGameAction', payload);
+  }
+
   /// Generic JS bridge call — calls window[fnName](jsonEncode(args))
   static void callJs(String fnName, Map<String, dynamic> args) {
     final payload = jsonEncode(args);

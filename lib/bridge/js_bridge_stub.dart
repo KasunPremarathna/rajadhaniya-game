@@ -40,6 +40,11 @@ class JsBridge {
     webViewController?.runJavaScript("window.enterBuildMode('$buildingType')");
   }
 
+  static void spawnTroop(Map<String, dynamic> payload) {
+    payload['action'] = 'spawn_troop';
+    callJs('flutterGameAction', payload);
+  }
+
   static void callJs(String fnName, Map<String, dynamic> args) {
     final payload = jsonEncode(args);
     // Note: JSON.stringify payload needs to be carefully passed

@@ -11,7 +11,7 @@
   var MAX_H = 540;
   var TILE_W = 16;
   var TILE_H = 8;
-  var GRID = 400;
+  var GRID = 800;
 
   var TASKS_CONFIG = {};
 
@@ -264,6 +264,8 @@
          if (typeof scene._upgradeEra === 'function') scene._upgradeEra();
       } else if (payload.action === 'force_reboot') {
          if (window.forceAssetUpdate) window.forceAssetUpdate();
+      } else if (payload.action === 'spawn_troop') {
+         if (typeof scene._spawnTroop === 'function') scene._spawnTroop(payload.troopId, payload.originX, payload.originY);
       }
     } catch (e) {
       console.error('[Bridge] Failed to parse flutterGameAction payload:', e);
@@ -287,6 +289,20 @@
     if (!phaserInstance || !window.__gameActive) return;
     var scene = phaserInstance.scene.scenes[0];
     if (scene) {
+      // Check Builder Capacity (Fences do not use builders)
+      if (type !== 'fence') {
+         var totalBuilders = scene._buildings.some(function(b) { return b.type === 'workers_hut' && b.is_completed; }) ? 2 : 1;
+         var activeBuilders = scene._buildings.filter(function(b) { return b.is_completed === false; }).length;
+         
+         if (activeBuilders >= totalBuilders) {
+            window.notifyFlutter({
+               type: 'show_snackbar',
+               message: 'All builders are busy! Wait for a task to finish.'
+            });
+            return;
+         }
+      }
+
       if (ghostBuilding) ghostBuilding.destroy();
       currentBuildMode = type;
       var config = BUILDINGS_CONFIG[type];
@@ -533,7 +549,7 @@
           var fl = s.add.graphics().setDepth(3);
 
           var pt = s.add.text(bcX, bcY + bH + 18, '', {
-            fontFamily: '"Noto Sans","Iskoola Pota",sans-serif',
+            fontFamily: 'GameFont',
             fontSize: '14px', color: '#FFD700',
           }).setOrigin(0.5).setDepth(4);
 
@@ -602,6 +618,11 @@
         s.load.image('tree', commonFolder + 'tree.webp' + v);
         s.load.spritesheet('deer', commonFolder + 'cow.webp' + v, { frameWidth: 256, frameHeight: 256 });
         s.load.image('gem_rock', commonFolder + 'gem_rock.webp' + v);
+        
+        // Custom troops and wildlife
+        s.load.spritesheet('wolf', commonFolder + 'wolf.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('bear', commonFolder + 'bear.png' + v, { frameWidth: 256, frameHeight: 256 });
+        s.load.spritesheet('troop', commonFolder + 'troop.png' + v, { frameWidth: 256, frameHeight: 256 });
 
         // Era-specific character sprite sheets
         s.load.spritesheet('player', eraFolder + 'walkingemptyhand.webp' + v, { frameWidth: 256, frameHeight: 256 });
@@ -654,6 +675,24 @@
             frameRate: 4,
             repeat: -1
           });
+        }
+        // Custom Wildlife Animations
+        if (s.textures.exists('wolf')) {
+          s.anims.create({ key: 'wolf-idle', frames: s.anims.generateFrameNumbers('wolf', { start: 0, end: 3 }), frameRate: 6, repeat: -1 });
+          s.anims.create({ key: 'wolf-walk', frames: s.anims.generateFrameNumbers('wolf', { start: 4, end: 7 }), frameRate: 10, repeat: -1 });
+          s.anims.create({ key: 'wolf-attack', frames: s.anims.generateFrameNumbers('wolf', { start: 8, end: 11 }), frameRate: 12, repeat: 0 });
+        }
+        if (s.textures.exists('bear')) {
+          s.anims.create({ key: 'bear-idle', frames: s.anims.generateFrameNumbers('bear', { start: 0, end: 3 }), frameRate: 6, repeat: -1 });
+          s.anims.create({ key: 'bear-walk', frames: s.anims.generateFrameNumbers('bear', { start: 4, end: 7 }), frameRate: 8, repeat: -1 });
+          s.anims.create({ key: 'bear-attack', frames: s.anims.generateFrameNumbers('bear', { start: 8, end: 11 }), frameRate: 10, repeat: 0 });
+        }
+        
+        // Custom Troop Animations
+        if (s.textures.exists('troop')) {
+          s.anims.create({ key: 'troop-idle', frames: s.anims.generateFrameNumbers('troop', { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
+          s.anims.create({ key: 'troop-walk', frames: s.anims.generateFrameNumbers('troop', { start: 4, end: 7 }), frameRate: 10, repeat: -1 });
+          s.anims.create({ key: 'troop-attack-axe', frames: s.anims.generateFrameNumbers('troop', { start: 8, end: 11 }), frameRate: 12, repeat: 0 });
         }
 
         if (showLoader) {
@@ -807,6 +846,37 @@
       }
       scene.recycleUnit = recycleUnit;
 
+      scene._troops = [];
+      scene._spawnTroop = function(troopId, originX, originY) {
+         var spawnTx = originX !== undefined ? originX : Math.floor(GRID/2);
+         var spawnTy = originY !== undefined ? originY : Math.floor(GRID/2);
+         
+         if (originX === undefined) {
+             var barracks = scene._buildings.find(function(b) { return b.type === 'sena_kanda'; });
+             if (!barracks) barracks = scene._buildings.find(function(b) { return b.type === 'workers_hut'; });
+             if (barracks) {
+                 spawnTx = barracks.tx;
+                 spawnTy = barracks.ty + barracks.h; // spawn just below it
+             }
+         }
+         
+         var pos = tileToWorld(spawnTx, spawnTy, ox, oy);
+         // Use custom troop asset for military units
+         var s = scene.getPooledUnit(scene, pos.x, pos.y, 'troop').setOrigin(0.5, 0.8).setDepth(spawnTx + spawnTy + 2).setScale(0.25);
+         // s.setTint(0xFF4444); // Tint removed, custom asset handles color
+         s._tileX = spawnTx; s._tileY = spawnTy;
+         s._troopId = troopId;
+         s._isMilitary = true;
+         scene._troops.push(s);
+         npcSprites.push(s); // include in selection and frustum culling
+         
+         if (typeof scheduleNPCMove === 'function') {
+             scheduleNPCMove(scene, s, ox, oy);
+         }
+         
+         console.log('[Bridge] Spawned troop ' + troopId + ' at tx:' + spawnTx + ' ty:' + spawnTy);
+      };
+
       /* load persistent buildings */
       var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
       var updated = false;
@@ -871,11 +941,15 @@
       var spX = ci.x + ox + TILE_W / 2;
       var spY = ci.y + oy + TILE_H / 2;
       var pTile = worldToTile(spX, spY, ox, oy);
+      // Wide initial bounds — will be replaced by exact grid bounds after placeResources()
+      var safeW = GRID * TILE_W + 2000;
+      var safeH = GRID * TILE_H + 2000;
+      scene.cameras.main.setBounds(ox - safeW / 2, oy - safeH / 2, safeW, safeH);
       scene._playerShadow = scene.add.image(spX, spY, 'shadow').setAlpha(0.3).setDepth(pTile.tx + pTile.ty + 0.1);
       playerSprite = scene.add.sprite(spX, spY, 'player').setDepth(pTile.tx + pTile.ty + 1).setOrigin(0.5, 0.8).setScale(0.25);
       
       scene.cameras.main.centerOn(spX, spY);
-      scene.cameras.main.setZoom(1.2);
+      scene.cameras.main.setZoom(0.65); // Tactical overview zoom on startup
       
       window.centerCameraOnPlayer = function() {
         if (!window.__gameActive || !scene || !scene.cameras || !playerSprite) return;
@@ -903,11 +977,7 @@
       };
       scene.cameras.main.setBackgroundColor('#689f38');
       
-      var cx = ox;
-      var cy = oy + (GRID * TILE_H) / 2;
-      var safeW = 2000;
-      var safeH = 1000;
-      scene.cameras.main.setBounds(cx - safeW/2, cy - safeH/2, safeW, safeH);
+
 
       /* setup multi-touch and zoom */
       scene.input.addPointer(1);
@@ -932,18 +1002,91 @@
       var spawnTile = worldToTile(spX, spY, ox, oy);
       revealFogAround(scene, spawnTile.tx, spawnTile.ty, FOG_RADIUS, ox, oy);
 
-      /* update fog as player moves */
+      /* update fog dynamically for units and town centers */
+      var fogTick = 0;
       scene.events.on('update', function() {
-        if (!playerSprite) return;
-        var pt = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
-        revealFogAround(scene, pt.tx, pt.ty, FOG_RADIUS, ox, oy);
+        fogTick++;
+        if (fogTick % 10 !== 0) return; // Optimize: only recalculate fog every 10 frames
+        
+        var revealTargets = [];
+        if (playerSprite) revealTargets.push(playerSprite);
+        if (npcSprites) revealTargets = revealTargets.concat(npcSprites);
+        if (scene._troops) revealTargets = revealTargets.concat(scene._troops);
+        
+        if (scene._buildings) {
+          for (var i = 0; i < scene._buildings.length; i++) {
+            if (scene._buildings[i].type === 'workers_hut' && scene._buildings[i].is_completed) {
+              var bx = scene._buildings[i].tx;
+              var by = scene._buildings[i].ty;
+              var wPos = tileToWorld(bx, by, ox, oy);
+              revealTargets.push({x: wPos.x, y: wPos.y});
+            }
+          }
+        }
+        
+        for (var i = 0; i < revealTargets.length; i++) {
+          var pt = worldToTile(revealTargets[i].x, revealTargets[i].y, ox, oy);
+          revealFogAround(scene, pt.tx, pt.ty, 24, ox, oy); // Dynamic 24-tile vision radius
+        }
       });
 
-      /* HUD */
+      /* Dynamic Hostile Aggro System */
+      var aggroTick = 0;
+      scene.events.on('update', function() {
+        aggroTick++;
+        if (aggroTick % 30 !== 0) return; // Scan for targets twice a second (assuming 60fps)
+        if (!scene._hostiles || scene._hostiles.length === 0) return;
+        
+        var validTargets = [];
+        if (playerSprite) validTargets.push(playerSprite);
+        if (npcSprites) validTargets = validTargets.concat(npcSprites);
+        if (scene._troops) validTargets = validTargets.concat(scene._troops);
+
+        for (var h = 0; h < scene._hostiles.length; h++) {
+          var hostile = scene._hostiles[h];
+          if (hostile.defeated || hostile.isAggroed) continue; // dead or already fighting/moving
+          
+          if (!hostile.sprite || !hostile.sprite.active) continue;
+          var hSprite = hostile.sprite;
+
+          for (var t = 0; t < validTargets.length; t++) {
+             var target = validTargets[t];
+             if (!target.active) continue;
+             
+             var targetTile = worldToTile(target.x, target.y, ox, oy);
+             var dist = Math.abs(hostile.tx - targetTile.tx) + Math.abs(hostile.ty - targetTile.ty);
+             
+             if (dist <= 15) { // 15-tile aggro radius
+                hostile.isAggroed = true; // Set flag so we don't spam pathfinding
+                floatText(scene, 'Aggro!', hSprite.x, hSprite.y - 40, '#FF0000');
+                
+                if (typeof moveUnitToTile === 'function') {
+                    // Sync sprite state with hostile logic
+                    hSprite._tileX = hostile.tx;
+                    hSprite._tileY = hostile.ty;
+                    
+                    moveUnitToTile(scene, hSprite, targetTile.tx, targetTile.ty, ox, oy, 1, function(success) {
+                        // When it finishes moving, reset aggro so it can scan again (or attack)
+                        hostile.isAggroed = false;
+                        if (success) {
+                            // Update internal coordinates
+                            var finalTile = worldToTile(hSprite.x, hSprite.y, ox, oy);
+                            hostile.tx = finalTile.tx;
+                            hostile.ty = finalTile.ty;
+                        }
+                    });
+                }
+                break; // Only aggro one target at a time
+             }
+          }
+        }
+      });
+
+      /* HUD - legacy debug text hidden; Flutter HUD handles all display */
       hudText = scene.add.text(10, 10, '', {
-        fontFamily: 'monospace', fontSize: '12px', color: '#ffffff',
+        fontFamily: 'GameFont', fontSize: '12px', color: '#ffffff',
         backgroundColor: 'rgba(0,0,0,0.65)', padding: { x: 10, y: 8 }, lineSpacing: 2,
-      }).setScrollFactor(0).setDepth(100);
+      }).setScrollFactor(0).setDepth(100).setAlpha(0); // Hidden — Flutter HUD used instead
 
       /* ESC to return */
       /* spawn NPCs */
@@ -1195,29 +1338,65 @@
           }
         }
 
+        // Check for hostile wildlife tap
+        if (scene._hostiles) {
+          for (var hi = 0; hi < scene._hostiles.length; hi++) {
+             var hostile = scene._hostiles[hi];
+             if (hostile.defeated) continue;
+             
+             // Distance from tap tile to hostile tile
+             var dist = Math.abs(tile.tx - hostile.tx) + Math.abs(tile.ty - hostile.ty);
+             if (dist <= 2) {
+                if (selectedUnit && (selectedUnit._isMilitary || selectedUnit === playerSprite)) {
+                   if (typeof issueCombatCommand === 'function') {
+                      issueCombatCommand(scene, selectedUnit, { type: 'wildlife', obj: hostile }, ox, oy);
+                   }
+                }
+                return; // Stop processing tap
+             }
+          }
+        }
+
         // Check for enemy kingdom tap
         for (var ei = 0; ei < enemyKingdoms.length; ei++) {
           var ek = enemyKingdoms[ei];
           var dist = Math.abs(tile.tx - ek.tx) + Math.abs(tile.ty - ek.ty);
           if (dist <= 2) {
-            tryAttackKingdom(scene, ek);
+            if (selectedUnit && selectedUnit._isMilitary) {
+              if (typeof issueCombatCommand === 'function') {
+                 issueCombatCommand(scene, selectedUnit, { type: 'kingdom', obj: ek }, ox, oy);
+              }
+            } else {
+              tryAttackKingdom(scene, ek);
+            }
             return;
           }
         }
 
-        // Check if player tapped the player character
+        // Check if player tapped a controllable unit (player or troop)
+        var tappedUnit = null;
         var pTile = worldToTile(playerSprite.x, playerSprite.y, ox, oy);
-        var distToPlayer = Math.abs(tile.tx - pTile.tx) + Math.abs(tile.ty - pTile.ty);
+        if (Math.abs(tile.tx - pTile.tx) + Math.abs(tile.ty - pTile.ty) <= 2) tappedUnit = playerSprite;
         
-        if (distToPlayer <= 2) {
-          if (selectedUnit === playerSprite) {
+        if (!tappedUnit && scene._troops) {
+           for (var t = 0; t < scene._troops.length; t++) {
+              var trp = scene._troops[t];
+              var tTile = worldToTile(trp.x, trp.y, ox, oy);
+              if (Math.abs(tile.tx - tTile.tx) + Math.abs(tile.ty - tTile.ty) <= 2) {
+                 tappedUnit = trp; break;
+              }
+           }
+        }
+
+        if (tappedUnit) {
+          if (selectedUnit === tappedUnit) {
             // Deselect
             selectedUnit = null;
             if (selectionRing) selectionRing.setVisible(false);
-            floatText(scene, window.gameLanguage === 'si' ? 'අවලංගුයි' : 'Deselected', playerSprite.x, playerSprite.y - 40, '#FF4444');
+            floatText(scene, window.gameLanguage === 'si' ? 'අවලංගුයි' : 'Deselected', tappedUnit.x, tappedUnit.y - 40, '#FF4444');
           } else {
             // Select
-            selectedUnit = playerSprite;
+            selectedUnit = tappedUnit;
             if (!selectionRing) {
               selectionRing = scene.add.graphics().setDepth(2000);
               selectionRing.lineStyle(3, 0x00FF00, 0.8);
@@ -1228,9 +1407,18 @@
                 yoyo: true, repeat: -1, duration: 800
               });
             }
-            selectionRing.setPosition(playerSprite.x, playerSprite.y);
+            selectionRing.setPosition(tappedUnit.x, tappedUnit.y);
             selectionRing.setVisible(true);
-            floatText(scene, window.gameLanguage === 'si' ? 'තේරුවා' : 'Selected', playerSprite.x, playerSprite.y - 40, '#00FF00');
+            floatText(scene, window.gameLanguage === 'si' ? 'තේරුවා' : 'Selected', tappedUnit.x, tappedUnit.y - 40, '#00FF00');
+            
+            if (!window._ringUpdateBound) {
+               window._ringUpdateBound = true;
+               scene.events.on('update', function() {
+                  if (selectedUnit && selectionRing && selectionRing.visible) {
+                     selectionRing.setPosition(selectedUnit.x, selectedUnit.y);
+                  }
+               });
+            }
           }
           return;
         }
@@ -1552,7 +1740,7 @@
        var signX = useX ? Math.sign(dx) : 0;
        var signY = useX ? 0 : Math.sign(dy);
        
-       // Limit to max 20 fences
+       // Limit to max 20 fences (fences do not use builders)
        length = Math.min(20, length);
        
        var newCoords = [];
@@ -1725,7 +1913,7 @@
       var fgBar = scene.add.graphics().setDepth(building.tx + building.ty + 2.6);
 
       var timerLabel = scene.add.text(pos.x, pos.y - 56, '', {
-        fontFamily: 'monospace', fontSize: '11px', color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
+        fontFamily: 'GameFont', fontSize: '11px', color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5, 1).setDepth(building.tx + building.ty + 2.7);
 
       var timerEvent = scene.time.addEvent({
@@ -1879,6 +2067,8 @@
         { type: 'tree',     count: 60 },
         { type: 'deer',     count: 20 },
         { type: 'gem_rock', count: 20 },
+        { type: 'wolf',     count: 5 },
+        { type: 'bear',     count: 2 }
       ];
 
       scene._occupied[(GRID - 1) / 2 + ',' + (GRID - 1) / 2] = true;
@@ -1920,6 +2110,21 @@
             spr._needs = { hunger: 50 + Math.random()*50, thirst: 50 + Math.random()*50, hygiene: 100, toilet: 100 };
             npcSprites.push(spr);
             scheduleNPCMove(scene, spr, ox, oy);
+          } else if (cfg.type === 'wolf' || cfg.type === 'bear') {
+             if (!scene._hostiles) scene._hostiles = [];
+             spr = scene.add.image(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1).setScale(0.25);
+             var hp = cfg.type === 'bear' ? 300 : 100;
+             var hpBar = scene.add.graphics();
+             hpBar.setDepth(tx + ty + 5);
+             scene._hostiles.push({
+                 type: cfg.type,
+                 sprite: spr,
+                 tx: tx, ty: ty,
+                 hp: hp,
+                 maxHp: hp,
+                 hpBar: hpBar,
+                 defeated: false
+             });
           } else {
             spr = scene.add.image(pos.x, pos.y, cfg.type).setOrigin(0.5, 0.8).setDepth(tx + ty + 1);
             spr.setScale(cfg.type === 'tree' ? 0.25 : 0.06);
@@ -1998,20 +2203,16 @@
     function initFog(scene, ox, oy) {
       fogSprites = {};
       revealedTiles = {};
-      for (var r = 0; r < GRID; r+=4) {
-        for (var c = 0; c < GRID; c+=4) {
-          var isBorder = (r < BORDER || r >= GRID - BORDER || c < BORDER || c >= GRID - BORDER);
-          if (!isBorder) {
-            revealedTiles[c + ',' + r] = true;
-            continue; // The entire safe zone is revealed by default
-          }
-
-          var posObj = cartToIso(c + 1.5, r + 1.5);
+      var fogStep = 8;
+      for (var r = 0; r < GRID; r += fogStep) {
+        for (var c = 0; c < GRID; c += fogStep) {
+          // Center of the 8x8 block is at c + 3.5, r + 3.5
+          var posObj = cartToIso(c + 3.5, r + 3.5);
           var pos = { x: posObj.x + ox + TILE_W/2, y: posObj.y + oy + TILE_H/2 };
           var fg = scene.add.graphics().setDepth(500);
-          fg.fillStyle(0x061006, 0.90);
+          fg.fillStyle(0x061006, 0.98); // Darker fog for immersion
           
-          var gw = 64; var gh = 32;
+          var gw = 128; var gh = 64; // 8x8 block dimensions
           fg.fillPoints([
             { x: pos.x,        y: pos.y - gh / 2 },
             { x: pos.x + gw/2, y: pos.y },
@@ -2031,8 +2232,8 @@
           if (tx < 0 || ty < 0 || tx >= GRID || ty >= GRID) continue;
           if (Math.sqrt(dc*dc + dr*dr) > radius) continue;
           
-          var fogTx = tx - (tx % 4);
-          var fogTy = ty - (ty % 4);
+          var fogTx = tx - (tx % 8);
+          var fogTy = ty - (ty % 8);
           var key = fogTx + ',' + fogTy;
           
           if (revealedTiles[key]) continue;
@@ -2073,12 +2274,12 @@
         flagG.fillTriangle(pos.x + 2, pos.y - 65, pos.x + 20, pos.y - 57, pos.x + 2, pos.y - 49);
 
         var lbl = scene.add.text(pos.x, pos.y - 72, '\u2694\ufe0f ' + d.name, {
-          fontFamily: 'monospace', fontSize: '9px', color: '#FFD700',
+          fontFamily: 'GameFont', fontSize: '9px', color: '#FFD700',
           backgroundColor: 'rgba(0,0,0,0.75)', padding: { x: 4, y: 2 },
           stroke: '#000', strokeThickness: 2,
         }).setOrigin(0.5, 1).setDepth(d.tx + d.ty + 4);
 
-        var kingdom = { name: d.name, tx: d.tx, ty: d.ty, sprite: base, label: lbl, flag: flagG, gold: d.gold, level: d.level, defeated: false };
+        var kingdom = { name: d.name, tx: d.tx, ty: d.ty, sprite: base, label: lbl, flag: flagG, gold: d.gold, level: d.level, defeated: false, hp: 2000, maxHP: 2000 };
         enemyKingdoms.push(kingdom);
         for(var er=0; er<8; er++){
           for(var ec=0; ec<8; ec++){
@@ -2138,6 +2339,167 @@
       }});
 
       refreshHud(scene);
+    }
+
+    function issueCombatCommand(scene, unit, targetPayload, ox, oy) {
+       if (unit._harvestTimer) { unit._harvestTimer.remove(false); unit._harvestTimer = null; }
+       if (unit._combatTimer) { unit._combatTimer.remove(false); unit._combatTimer = null; }
+       scene.tweens.killTweensOf(unit);
+       
+       var targetTx = targetPayload.obj.tx;
+       var targetTy = targetPayload.obj.ty;
+
+       var dmg = 10, range = 1, speed = 1000;
+       if (window.gameConfig && window.gameConfig.troops && unit._troopId) {
+          var tCfg = window.gameConfig.troops.find(function(x) { return x.id === unit._troopId; });
+          if (tCfg) {
+             dmg = tCfg.attack_damage || 10;
+             range = tCfg.attack_range || 1;
+             speed = tCfg.attack_speed_ms || 1000;
+          }
+       }
+       
+       unit._combatStats = { dmg: dmg, range: range, speed: speed };
+       unit._combatTarget = targetPayload;
+       
+       var uTx = unit._tileX !== undefined ? unit._tileX : Math.floor((unit.x - ox) / TILE_W);
+       var uTy = unit._tileY !== undefined ? unit._tileY : Math.floor((unit.y - oy) / TILE_H);
+       
+       var minT = null;
+       var minDist = 999999;
+       
+       // Footprint size depends on target type
+       var maxR = targetPayload.type === 'kingdom' ? 8 : 1;
+       var maxC = maxR;
+       
+       for (var dr = 0; dr < maxR; dr++) {
+         for (var dc = 0; dc < maxC; dc++) {
+            var ctx = targetTx + dc; var cty = targetTy + dr;
+            var dist = Math.abs(uTx - ctx) + Math.abs(uTy - cty);
+            if (dist < minDist) { minDist = dist; minT = {tx: ctx, ty: cty}; }
+         }
+       }
+       
+       floatText(scene, '⚔️ Attacking!', unit.x, unit.y - 40, '#FF4444');
+       
+       if (minDist <= range) {
+           startCombatLoop(scene, unit, targetPayload, ox, oy);
+       } else {
+           moveUnitToTile(scene, unit, minT.tx, minT.ty, ox, oy, range, function(success) {
+               if (success) startCombatLoop(scene, unit, targetPayload, ox, oy);
+           });
+       }
+    }
+
+    function startCombatLoop(scene, unit, targetPayload, ox, oy) {
+        if (!unit.active || targetPayload.obj.defeated) return;
+        
+        // Flip to face target
+        var targetPos = tileToWorld(targetPayload.obj.tx, targetPayload.obj.ty, ox, oy);
+        unit.setFlipX(unit.x > targetPos.x);
+
+        unit._combatTimer = scene.time.addEvent({
+            delay: unit._combatStats.speed,
+            loop: true,
+            callback: function() {
+                if (!unit.active || targetPayload.obj.defeated) {
+                    if (unit._combatTimer) { unit._combatTimer.remove(false); unit._combatTimer = null; }
+                    return;
+                }
+                
+                // Swing animation
+                if (scene.anims && scene.anims.exists('action-axe')) {
+                    unit.play('action-axe', true);
+                } else if (scene.anims && scene.anims.exists('walk-down')) {
+                    unit.play('walk-down', true); // fallback
+                }
+                
+                // Projectile Logic
+                var isRanged = unit._combatStats && unit._combatStats.range > 2;
+
+                if (isRanged) {
+                    var projectile = scene.add.text(unit.x, unit.y - 20, '🏹', { fontSize: '20px' }).setDepth(3000);
+                    var angle = Phaser.Math.Angle.Between(unit.x, unit.y - 20, targetPos.x, targetPos.y - 20);
+                    projectile.setRotation(angle + Math.PI/4); // adjust emoji rotation
+                    
+                    scene.tweens.add({
+                        targets: projectile,
+                        x: targetPos.x,
+                        y: targetPos.y - 20,
+                        duration: 300,
+                        onComplete: function() {
+                            if (projectile && projectile.active) projectile.destroy();
+                            applyDamage();
+                        }
+                    });
+                } else {
+                    applyDamage();
+                }
+
+                function applyDamage() {
+                    if (targetPayload.obj.defeated) return;
+                    
+                    // Damage target
+                    targetPayload.obj.hp -= unit._combatStats.dmg;
+                    
+                    // Render sparks
+                    playHarvestEffect(scene, targetPos.x + (Math.random()*40-20), targetPos.y - 20 - Math.random()*20, 'spark');
+                    floatText(scene, '-' + unit._combatStats.dmg, targetPos.x, targetPos.y - 60, '#FF0000');
+                    
+                    // Render HP Bar
+                    if (!targetPayload.obj.hpBar) {
+                        targetPayload.obj.hpBar = scene.add.graphics().setDepth(targetPayload.obj.tx + targetPayload.obj.ty + 5);
+                    }
+                    targetPayload.obj.hpBar.clear();
+                    var hpPct = Math.max(0, targetPayload.obj.hp / targetPayload.obj.maxHP);
+                    targetPayload.obj.hpBar.fillStyle(0x000000, 0.8);
+                    targetPayload.obj.hpBar.fillRect(targetPos.x - 30, targetPos.y - 90, 60, 8);
+                    targetPayload.obj.hpBar.fillStyle(0xFF0000, 1);
+                    targetPayload.obj.hpBar.fillRect(targetPos.x - 30 + 1, targetPos.y - 90 + 1, (60 - 2) * hpPct, 6);
+
+                    // Death check
+                    if (targetPayload.obj.hp <= 0 && !targetPayload.obj.defeated) {
+                        targetPayload.obj.defeated = true;
+                        if (unit._combatTimer) { unit._combatTimer.remove(false); unit._combatTimer = null; }
+                        if (targetPayload.obj.hpBar) { targetPayload.obj.hpBar.destroy(); targetPayload.obj.hpBar = null; }
+                        
+                        if (targetPayload.type === 'kingdom') {
+                            executeAttack(scene, targetPayload.obj); // Re-use the pillage/defeat logic!
+                        } else if (targetPayload.type === 'wildlife') {
+                            executeWildlifeDefeat(scene, targetPayload.obj);
+                        }
+                        
+                        unit.stop(); // idle
+                    }
+                }
+            }
+        });
+    }
+
+    function executeWildlifeDefeat(scene, hostile) {
+        hostile.defeated = true;
+        if (hostile.sprite) {
+            playHarvestEffect(scene, hostile.sprite.x, hostile.sprite.y, 'smoke');
+            hostile.sprite.destroy();
+            hostile.sprite = null;
+        }
+        if (hostile.hpBar) {
+            hostile.hpBar.destroy();
+            hostile.hpBar = null;
+        }
+
+        var meatReward = hostile.type === 'bear' ? 20 : 10;
+        // Reward Meat (Food) on kill — not Gold
+        localPlayerData.inventory = localPlayerData.inventory || {};
+        localPlayerData.inventory.meat = (localPlayerData.inventory.meat || 0) + meatReward;
+        taskProgress['hunting'] = (taskProgress['hunting'] || 0) + meatReward; // era progress tracking
+        
+        var isoPos = cartToIso(hostile.tx + 0.5, hostile.ty + 0.5);
+        var targetPos = { x: isoPos.x + scene.cameras.main.centerX, y: isoPos.y + scene.cameras.main.centerY };
+        
+        floatText(scene, '+' + meatReward + ' \ud83e\udd69 Meat', targetPos.x, targetPos.y - 40, '#FF6B35');
+        
+        refreshHud(scene);
     }
 
 
@@ -2306,10 +2668,16 @@
 
       var yields = [];
       if (cfg && cfg.icon) yields.push('1 ' + cfg.icon);
-      if (res.type === 'gem_rock') yields.push('30 🪙');
-      if (res.type === 'deer') { yields.push('10 🪙'); yields.push('2 🥩'); }
-      if (res.type === 'tree') yields.push('5 🪙');
-      if (res.type === 'lake') { yields.push('15 🪙'); yields.push('1 🥩'); }
+      if (res.type === 'gem_rock') yields.push('🪙 +10 Gold  💎 +3 Gems');
+      if (res.type === 'deer') { yields.push('🥛 +5 Milk'); yields.push('💧 +8 Hydration'); }
+      if (res.type === 'tree') { yields.push('🪙 +5 Gold'); yields.push('🪵 +3 Wood'); }
+      if (res.type === 'lake') { yields.push('🪙 +15 Gold'); yields.push('💧 +20 Hydration'); yields.push('🍔 +1 Food'); }
+
+      var assignedWorkers = 0;
+      var maxWorkers = 5; // Default max workers per drop-off
+      if (res.isBuilding && res.buildingData) {
+         assignedWorkers = res.buildingData._workers ? res.buildingData._workers.length : 0;
+      }
 
       window.notifyFlutter({
         type: 'show_contextual_menu',
@@ -2322,7 +2690,9 @@
         yields: yields,
         cost: GLOBAL_CONFIG.treeClearCost || 100,
         isEraUpgradeReady: window.isEraUpgradeReady,
-        isTownHall: res.type === 'workers_hut'
+        isTownHall: res.type === 'workers_hut',
+        assignedWorkers: assignedWorkers,
+        maxWorkers: maxWorkers
       });
 
       scene._upgradeEra = function() {
@@ -2508,8 +2878,18 @@
       }
       if (res.currentYield <= 0) return;
       
-      var maxCarry = 5;
+      var maxCarry = 10;
       unit._payload = unit._payload || { amount: 0, type: res.type };
+
+      // Assign worker to nearest dropoff for UI tracking
+      if (!unit._assignedDropoff) {
+         var dropoff = findNearestDropoff(scene, unit);
+         if (dropoff) {
+            if (!dropoff._workers) dropoff._workers = [];
+            if (dropoff._workers.indexOf(unit) === -1) dropoff._workers.push(unit);
+            unit._assignedDropoff = dropoff;
+         }
+      }
 
       // If unit already carrying something else or full, drop off first
       if (unit._payload.amount >= maxCarry || (unit._payload.amount > 0 && unit._payload.type !== res.type)) {
@@ -2564,6 +2944,11 @@
       unit._harvestTimer = null;
       scene.tweens.killTweensOf(unit);
       if (unit.anims && unit.anims.isPlaying) unit.stop();
+      if (unit._assignedDropoff && unit._assignedDropoff._workers) {
+         var idx = unit._assignedDropoff._workers.indexOf(unit);
+         if (idx !== -1) unit._assignedDropoff._workers.splice(idx, 1);
+         unit._assignedDropoff = null;
+      }
     }
 
     function depleteResource(scene, res) {
@@ -2576,7 +2961,7 @@
       if (res.sprite) res.sprite.destroy();
     }
 
-    function findNearestDropoff(scene, unit) {
+    function findNearestDropoff(scene, unit, blacklist) {
       var pType = unit._payload ? unit._payload.type : null;
       var dropoffs = [];
       if (pType === 'tree') {
@@ -2597,6 +2982,8 @@
         var b = scene._buildings[i];
         if (dropoffs.indexOf(b.type) !== -1) {
           if (!b.is_completed) continue; // Only deposit at completed buildings
+          if (blacklist && blacklist.indexOf(b) !== -1) continue; // Skip blocked buildings
+          
           var dist = Math.abs(b.tx - uTx) + Math.abs(b.ty - uTy);
           if (dist < bestDist) {
             bestDist = dist;
@@ -2629,11 +3016,13 @@
       checkEraCompletion(scene);
     }
 
-    function returnDropoff(scene, unit, res, ox, oy) {
-      var dropoff = findNearestDropoff(scene, unit);
+    function returnDropoff(scene, unit, res, ox, oy, blacklist) {
+      blacklist = blacklist || [];
+      var dropoff = findNearestDropoff(scene, unit, blacklist);
       if (!dropoff) {
         floatText(scene, 'No Drop-off!', unit.x, unit.y - 40, '#FF0000');
-        depositPayload(scene, unit); // Fallback deposit
+        unit.stop(); // Go idle
+        depositPayload(scene, unit); // Fallback deposit so they don't hold resources forever
         return;
       }
       
@@ -2653,6 +3042,16 @@
               }
             });
           }
+        } else {
+          // Failsafe: Path is blocked!
+          floatText(scene, 'Blocked!', unit.x, unit.y - 40, '#FF4444');
+          unit.stop(); // Drop payload animation
+          blacklist.push(dropoff); // Add trapped building to blacklist
+          
+          // Re-route dynamically to the next nearest building
+          scene.time.delayedCall(1000, function() {
+              returnDropoff(scene, unit, res, ox, oy, blacklist);
+          });
         }
       });
     }
@@ -2878,7 +3277,7 @@
 
       /* --- countdown label (e.g. "10s") --- */
       var timerLabel = scene.add.text(res.sprite.x, res.sprite.y - 56, '10s', {
-        fontFamily: 'monospace',
+        fontFamily: 'GameFont',
         fontSize: '11px',
         color: '#FFFFFF',
         stroke: '#000000',
@@ -2955,21 +3354,54 @@
       taskProgress[taskKey] = (taskProgress[taskKey] || 0) + 1;
       var current = taskProgress[taskKey];
 
-      // === Gold & Resource rewards per resource type ===
+      // ══════════════════════════════════════════════════
+      // OFFICIAL RESOURCE ECONOMY MATRIX
+      // ══════════════════════════════════════════════════
+      // 🪵 Tree    → +Gold (5) AND +Wood (via taskProgress) — dual drop
+      // 🐄 Deer    → +Milk (livestock interaction, no gold)
+      // 💎 Gem     → +Gold (30)
+      // 🏞️ Lake    → +Gold (15) AND +Food (1)
+      // ══════════════════════════════════════════════════
       var goldReward = 0;
+      var woodReward = 0;
+      var gemReward  = 0;
+      var milkReward = 0;
       var foodReward = 0;
-      if (res.type === 'gem_rock') { goldReward = 30; }
-      if (res.type === 'deer')     { goldReward = 10; foodReward = 2; }
-      if (res.type === 'tree')     { goldReward = 5; }
-      if (res.type === 'lake')     { goldReward = 15; foodReward = 1; }
+      var hydrateReward = 0;
+
+      if (res.type === 'gem_rock') { goldReward = 10; gemReward = 3; }  // dual drop: Gold + Gems
+      if (res.type === 'tree')     { goldReward = 5;  woodReward = 3; }  // dual drop: Gold + Wood
+      if (res.type === 'deer')     { milkReward = 5;  hydrateReward = 8; }  // Milk + slight hydration boost
+      if (res.type === 'lake')     { goldReward = 15; foodReward = 1; hydrateReward = 20; } // authoritative water source
+
       if (goldReward > 0) {
         localPlayerData.gold += goldReward;
         var goldMsg = window.gameLanguage === 'si' ? '🪙 +' + goldReward + ' රත්‍රන්' : '🪙 +' + goldReward + ' Gold';
         floatText(scene, goldMsg, res.sprite.x + 20, res.sprite.y - 50, '#FFD700');
       }
+      if (gemReward > 0) {
+        taskProgress['gem'] = (taskProgress['gem'] || 0) + gemReward;
+        floatText(scene, '💎 +' + gemReward + ' Gems', res.sprite.x - 20, res.sprite.y - 70, '#A78BFA');
+      }
+      if (woodReward > 0) {
+        taskProgress['wood'] = (taskProgress['wood'] || 0) + woodReward;
+        floatText(scene, '🪵 +' + woodReward + ' Wood', res.sprite.x - 20, res.sprite.y - 70, '#8B5A2B');
+      }
+      if (milkReward > 0) {
+        localPlayerData.inventory = localPlayerData.inventory || {};
+        localPlayerData.inventory.milk = (localPlayerData.inventory.milk || 0) + milkReward;
+        floatText(scene, '🥛 +' + milkReward + ' Milk', res.sprite.x, res.sprite.y - 50, '#FFFDE7');
+      }
       if (foodReward > 0) {
         localPlayerData.inventory = localPlayerData.inventory || {};
         localPlayerData.inventory.food = (localPlayerData.inventory.food || 0) + foodReward;
+      }
+      if (hydrateReward > 0) {
+        localPlayerData.needs.thirst = Math.min(100, (localPlayerData.needs.thirst || 0) + hydrateReward);
+        var hydrateMsg = res.type === 'lake'
+          ? '💧 +' + hydrateReward + ' Hydration'
+          : '💧 +' + hydrateReward + ' Hydration (Milk)';
+        floatText(scene, hydrateMsg, res.sprite.x, res.sprite.y - 90, '#64B5F6');
       }
 
       var idx = resourceSprites.indexOf(res);
@@ -3011,7 +3443,7 @@
 
     function floatText(scene, msg, wx, wy, color) {
       var t = scene.add.text(wx, wy, msg, {
-        fontFamily: 'monospace', fontSize: '13px', color: color || '#ffffff',
+        fontFamily: 'GameFont', fontSize: '13px', color: color || '#ffffff',
         fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5).setDepth(150);
 
@@ -3064,13 +3496,15 @@
         tasks: taskProgress,
         taskConfig: TASKS_CONFIG,
         gold: localPlayerData.gold,
-        needs: localPlayerData.needs,
-        health: localPlayerData.health,
+        wood: taskProgress['wood'] || 0,       // explicit top-level for Flutter resource bar
+        gem: taskProgress['gem'] || 0,         // explicit top-level for Flutter resource bar
         meat: localPlayerData.inventory.meat || 0,
         milk: localPlayerData.inventory.milk || 0,
-        meatRate: farmCount * 1200, // 1 per 3s = 1200/hr
-        milkRate: cowFarmCount * 3600, // 3 per 3s = 3600/hr
-        woodRate: lumberCampCount * 2400, // 2 per 3s = 2400/hr
+        needs: localPlayerData.needs,
+        health: localPlayerData.health,
+        meatRate: farmCount * 1200,
+        milkRate: cowFarmCount * 3600,
+        woodRate: lumberCampCount * 2400,
         buildings: safeBuildings,
         forceSync: window.__forceSync
       });
