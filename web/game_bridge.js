@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.4.8';
+  var GAME_ASSET_VERSION = 'v1.4.9';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -1226,13 +1226,9 @@
         if (longPressTimer) { longPressTimer.remove(false); longPressTimer = null; }
         longPressPtr = null;
 
-        // Ignore if this was a drag (moved more than 10 pixels)
-        var distMoved = Phaser.Math.Distance.Between(pointerDownX, pointerDownY, ptr.x, ptr.y);
-        if (distMoved > 10) return;
-
         if (scene.input.pointer1.isDown || scene.input.pointer2.isDown) return;
 
-        // If in edit/drag mode, confirm placement on tap
+        // If in building reposition mode, always handle the lift — even after a long drag
         if (editMode && editGhost) {
           var wp = scene.cameras.main.getWorldPoint(ptr.x, ptr.y);
           var tile = worldToTile(wp.x, wp.y, ox, oy);
@@ -1244,6 +1240,10 @@
           }
           return;
         }
+
+        // Ignore if this was a camera pan (moved more than 10 pixels)
+        var distMoved = Phaser.Math.Distance.Between(pointerDownX, pointerDownY, ptr.x, ptr.y);
+        if (distMoved > 10) return;
 
         if (currentBuildMode && ghostBuilding) {
           if (ghostBuilding._isPlaced) return; // Prevent tapping through Flutter UI
