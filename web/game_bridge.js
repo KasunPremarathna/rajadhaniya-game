@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.5.0';
+  var GAME_ASSET_VERSION = 'v1.5.1';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -901,7 +901,9 @@
 
         var pos = tileToWorld(b.tx, b.ty, ox, oy);
         var shad = scene.add.image(pos.x, pos.y, 'shadow').setAlpha(0.3).setDepth(b.tx + b.ty + 0.1);
-        var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(0.12);
+        var lvScales = [0.12, 0.16, 0.20, 0.25, 0.30];
+        var lvScale = lvScales[Math.min((b.level || 1) - 1, lvScales.length - 1)];
+        var bSprite = scene.add.image(pos.x, pos.y, config.texture).setOrigin(0.5, 0.8).setDepth(b.tx + b.ty + 2).setScale(lvScale);
         for(var row=0; row<config.h; row++){
           for(var col=0; col<config.w; col++){
           scene._occupied[(b.tx+col)+','+(b.ty+row)] = true;
