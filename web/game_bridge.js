@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.4.9';
+  var GAME_ASSET_VERSION = 'v1.5.0';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -244,6 +244,8 @@
         if (typeof scene._boostHarvest === 'function') scene._boostHarvest(payload.tx, payload.ty, payload.taskKey);
       } else if (payload.action === 'remove_building') {
         if (typeof scene._removeBuilding === 'function') scene._removeBuilding(payload.tx, payload.ty);
+      } else if (payload.action === 'upgrade_building') {
+        if (typeof scene._upgradeBuilding === 'function') scene._upgradeBuilding(payload.tx, payload.ty, payload.cost);
       } else if (payload.action === 'clear_border') {
         if (typeof scene._clearBorderTree === 'function') scene._clearBorderTree(payload.tx, payload.ty, payload.cost);
       } else if (payload.action === 'execute_attack') {
@@ -1221,6 +1223,117 @@
         }
         if (bData) removeBuilding(scene, bData);
       };
+
+      /* ── Upgrade Building ── */
+      scene._upgradeBuilding = function(tx, ty, cost) {
+        var bData = null;
+        for (var i = 0; i < scene._buildings.length; i++) {
+          if (scene._buildings[i].tx === tx && scene._buildings[i].ty === ty) {
+            bData = scene._buildings[i]; break;
+          }
+        }
+        if (!bData || !bData.sprite) return;
+
+        // Deduct gold
+        if (localPlayerData.gold < cost) {
+          floatText(scene, 'Not enough Gold!', bData.sprite.x, bData.sprite.y - 40, '#FF0000');
+          return;
+        }
+        localPlayerData.gold -= cost;
+
+        // Level up
+        bData.level = (bData.level || 1) + 1;
+
+        // Scale grows with level: Lv1=0.12, Lv2=0.16, Lv3=0.20, Lv4=0.25
+        var scales = [0.12, 0.16, 0.20, 0.25, 0.30];
+        var newScale = scales[Math.min(bData.level - 1, scales.length - 1)];
+        scene.tweens.add({
+          targets: bData.sprite,
+          scaleX: newScale, scaleY: newScale,
+          duration: 500, ease: 'Back.Out'
+        });
+
+        floatText(scene, '⬆ Level ' + bData.level + '!', bData.sprite.x, bData.sprite.y - 50, '#D4A017');
+        playHarvestEffect(scene, bData.sprite.x, bData.sprite.y, 'spark');
+
+        // Persist level to localStorage
+        var savedBuildings = JSON.parse(localStorage.getItem('rajadhaniya_buildings') || '[]');
+        for (var i = 0; i < savedBuildings.length; i++) {
+          if (savedBuildings[i].tx === tx && savedBuildings[i].ty === ty) {
+            savedBuildings[i].level = bData.level;
+            break;
+          }
+        }
+        localStorage.setItem('rajadhaniya_buildings', JSON.stringify(savedBuildings));
+        window.__forceSync = true;
+        refreshHud(scene);
+      };
+
+      /* ── Offline Production Catchup ── */
+      (function applyOfflineProduction() {
+        var OFFLINE_CAP_HOURS = 8;
+        var lastSession = parseInt(localStorage.getItem('rajadhaniya_last_session') || '0', 10);
+        localStorage.setItem('rajadhaniya_last_session', Date.now().toString());
+
+        if (!lastSession) return; // First session ever, nothing to catch up
+        var offlineSec = Math.min((Date.now() - lastSession) / 1000, OFFLINE_CAP_HOURS * 3600);
+        if (offlineSec < 60) return; // Less than a minute — don't bother
+
+        // Production rates per second for each building type (per building)
+        var productionRates = {
+          farm:        { food: 5/20, gold: 10/20 },
+          cow_farm:    { milk: 3/3 },
+          mine:        { gold: 25/30 },
+          lumber_camp: { wood: 2/3 }
+        };
+
+        var totals = { gold: 0, wood: 0, food: 0, milk: 0 };
+        var completedBuildings = savedBuildings.filter(function(b) { return b.is_completed; });
+
+        completedBuildings.forEach(function(b) {
+          var rate = productionRates[b.type];
+          if (!rate) return;
+          var lvMult = b.level || 1;
+          for (var res in rate) {
+            totals[res] = (totals[res] || 0) + rate[res] * offlineSec * lvMult;
+          }
+        });
+
+        // Apply totals
+        if (totals.gold  > 0) localPlayerData.gold += Math.floor(totals.gold);
+        if (totals.food  > 0) localPlayerData.inventory.food = (localPlayerData.inventory.food || 0) + Math.floor(totals.food);
+        if (totals.milk  > 0) localPlayerData.inventory.milk = (localPlayerData.inventory.milk || 0) + Math.floor(totals.milk);
+        if (totals.wood  > 0) taskProgress['wood'] = (taskProgress['wood'] || 0) + Math.floor(totals.wood);
+
+        // Show Flutter notification
+        var hours = Math.floor(offlineSec / 3600);
+        var mins  = Math.floor((offlineSec % 3600) / 60);
+        var timeStr = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
+        var lines = [];
+        if (Math.floor(totals.gold) > 0) lines.push('🪙 +' + Math.floor(totals.gold) + ' Gold');
+        if (Math.floor(totals.food) > 0) lines.push('🌾 +' + Math.floor(totals.food) + ' Food');
+        if (Math.floor(totals.milk) > 0) lines.push('🥛 +' + Math.floor(totals.milk) + ' Milk');
+        if (Math.floor(totals.wood) > 0) lines.push('🪵 +' + Math.floor(totals.wood) + ' Wood');
+
+        if (lines.length > 0) {
+          window.notifyFlutter({
+            type: 'show_offline_reward',
+            offlineTime: timeStr,
+            rewards: lines
+          });
+          window.__forceSync = true;
+          refreshHud(scene);
+        }
+      })();
+
+      /* ── Save session timestamp every 60s ── */
+      scene.time.addEvent({
+        delay: 60000,
+        loop: true,
+        callback: function() {
+          localStorage.setItem('rajadhaniya_last_session', Date.now().toString());
+        }
+      });
 
       scene.input.on('pointerup', function (ptr) {
         if (longPressTimer) { longPressTimer.remove(false); longPressTimer = null; }

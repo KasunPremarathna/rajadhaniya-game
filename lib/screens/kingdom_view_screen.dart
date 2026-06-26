@@ -207,14 +207,128 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       _showEraUpgraded(data);
     } else if (type == 'webview_ready') {
       _bootGameEngine();
+    } else if (type == 'show_offline_reward') {
+      _showOfflineReward(data);
     }
+  }
+
+  void _showOfflineReward(Map<String, dynamic> data) {
+    final offlineTime = data['offlineTime'] ?? '?';
+    final rewards = List<String>.from(data['rewards'] ?? []);
+    if (rewards.isEmpty) return;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 300),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A120B),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFD4A017), width: 2),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.7), blurRadius: 24)],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF2C1A0E),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                ),
+                child: Column(
+                  children: [
+                    const Text('🏠', style: TextStyle(fontSize: 36)),
+                    const SizedBox(height: 6),
+                    const Text('Welcome Back!', style: TextStyle(color: Color(0xFFD4A017), fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text('Your kingdom worked for $offlineTime', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  ],
+                ),
+              ),
+              // Rewards list
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    ...rewards.map((r) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(r, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600))),
+                        ],
+                      ),
+                    )),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFD4A017),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Collect!', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Returns production stats for a building type.
+  List<Map<String, String>> _getProductionStats(String type) {
+    switch (type) {
+      case 'farm':      return [{'icon': '🌾', 'label': '+5 Food', 'rate': 'every 20s'}, {'icon': '🪙', 'label': '+10 Gold', 'rate': 'every 20s'}];
+      case 'cow_farm':  return [{'icon': '🥛', 'label': '+3 Milk', 'rate': 'every 3s'}];
+      case 'lumber_camp': return [{'icon': '🪵', 'label': '+2 Wood', 'rate': 'every 3s'}];
+      case 'mine':      return [{'icon': '🪙', 'label': '+25 Gold', 'rate': 'every 30s'}];
+      case 'house':     return [{'icon': '👨‍👩‍👧', 'label': 'Increases max population', 'rate': ''}];
+      case 'workers_hut': return [{'icon': '👷', 'label': '+1 Builder slot', 'rate': ''}];
+      case 'temple':    return [{'icon': '🙏', 'label': 'Boosts gem yield', 'rate': ''}];
+      case 'lake':      return [{'icon': '🐟', 'label': 'Fish on demand', 'rate': ''}];
+      case 'boat_house': return [{'icon': '🚢', 'label': 'Enables trade routes', 'rate': ''}];
+      case 'fence':     return [{'icon': '🔒', 'label': 'Blocks enemy paths', 'rate': ''}];
+      default:          return [{'icon': '📦', 'label': 'Passive bonus', 'rate': ''}];
+    }
+  }
+
+  /// Returns the gold cost to upgrade a building at the given level.
+  int _getUpgradeCost(String type, int level) {
+    const base = {'farm': 150, 'cow_farm': 120, 'lumber_camp': 120, 'mine': 200, 'house': 80, 'workers_hut': 180, 'temple': 300};
+    return ((base[type] ?? 100) * level * 1.5).toInt();
   }
 
   void _showBuildingDetails(Map<String, dynamic> data) {
     final buildingType = data['buildingType'] ?? 'Unknown';
-    final nameEn = buildingType.toString().split('_').map((e) => e.substring(0, 1).toUpperCase() + e.substring(1)).join(' ');
+    final bData = data['buildingData'] as Map? ?? {};
+    final level = (bData['level'] ?? 1) as int;
+    final nameEn = buildingType.toString().split('_')
+        .map((e) => e.isEmpty ? '' : e[0].toUpperCase() + e.substring(1))
+        .join(' ');
     final displayName = _translate(nameEn);
-    
+    final stats = _getProductionStats(buildingType.toString());
+    final upgradeCost = _getUpgradeCost(buildingType.toString(), level);
+    final currentGold = (_hudData?['gold'] ?? 0) as num;
+    final canAffordUpgrade = currentGold >= upgradeCost;
+
     showDialog(
       context: context,
       barrierColor: Colors.black54,
@@ -224,47 +338,145 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           child: Container(
             constraints: const BoxConstraints(maxWidth: 320),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.95),
+              color: const Color(0xFF1A120B),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 2),
+              border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.6), width: 2),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 20)],
             ),
-            padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.business, color: const Color(0xFFD4A017), size: 40),
-                const SizedBox(height: 12),
-                Text(
-                  displayName,
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Level 1',
-                  style: TextStyle(color: Colors.white54, fontSize: 14),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    minimumSize: const Size(double.infinity, 44),
+                // Header
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2C1A0E),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
                   ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    JsBridge.callJs('flutterGameAction', {
-                      'action': 'remove_building',
-                      'tx': data['buildingData']?['tx'],
-                      'ty': data['buildingData']?['ty'],
-                    });
-                  },
-                  icon: const Icon(Icons.delete, color: Colors.white),
-                  label: Text(_translate('Demolish'), style: const TextStyle(color: Colors.white)),
+                  child: Row(
+                    children: [
+                      Icon(_getIconForBuildingType(buildingType.toString()), color: const Color(0xFFD4A017), size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(displayName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A017).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5)),
+                        ),
+                        child: Text('Lv $level', style: const TextStyle(color: Color(0xFFD4A017), fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(_translate('Close'), style: const TextStyle(color: Colors.white54)),
-                )
+
+                // Production Stats
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('📊 Production', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+                      const SizedBox(height: 8),
+                      ...stats.map((s) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36, height: 36,
+                              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(8)),
+                              child: Center(child: Text(s['icon']!, style: const TextStyle(fontSize: 18))),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(s['label']!, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+                            if ((s['rate'] ?? '').isNotEmpty)
+                              Text(s['rate']!, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                          ],
+                        ),
+                      )),
+                    ],
+                  ),
+                ),
+
+                const Divider(color: Colors.white12, indent: 16, endIndent: 16),
+
+                // Upgrade Button
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: canAffordUpgrade ? const Color(0xFFD4A017) : Colors.grey.shade800,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: canAffordUpgrade ? () {
+                            Navigator.pop(context);
+                            JsBridge.callJs('flutterGameAction', {
+                              'action': 'upgrade_building',
+                              'tx': bData['tx'],
+                              'ty': bData['ty'],
+                              'cost': upgradeCost,
+                            });
+                          } : null,
+                          icon: Icon(Icons.upgrade, color: canAffordUpgrade ? Colors.black87 : Colors.white38, size: 18),
+                          label: Text(
+                            '⬆ Upgrade  🪙 $upgradeCost',
+                            style: TextStyle(color: canAffordUpgrade ? Colors.black87 : Colors.white38, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                      if (!canAffordUpgrade)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 4),
+                          child: Text('Not enough Gold', style: TextStyle(color: Colors.redAccent, fontSize: 11)),
+                        ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.redAccent),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                minimumSize: const Size(0, 40),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                JsBridge.callJs('flutterGameAction', {
+                                  'action': 'remove_building',
+                                  'tx': bData['tx'],
+                                  'ty': bData['ty'],
+                                });
+                              },
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 16),
+                              label: const Text('Demolish', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.white24),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                minimumSize: const Size(0, 40),
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
