@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.4.5';
+  var GAME_ASSET_VERSION = 'v1.4.7';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -570,8 +570,8 @@
         var color = eraColors[eraId] || 0x2E7D32;
 
         function generateNaturalGrass(key, baseColorHex, tuftColor, isDarker) {
-          var gw = 64;
-          var gh = 32;
+          var gw = 256;
+          var gh = 128;
           var g = s.add.graphics();
           g.fillStyle(baseColorHex, 1);
           g.beginPath(); g.moveTo(gw / 2, 0); g.lineTo(gw, gh / 2);
@@ -580,7 +580,7 @@
           g.lineStyle(1, isDarker ? 0x33691e : 0x558b2f, 0.3); g.strokePath();
 
           // Scatter random lines to simulate dense natural grass
-          for (var i = 0; i < 45; i++) {
+          for (var i = 0; i < 600; i++) {
              var px = Math.random() * gw;
              var py = Math.random() * gh;
              var dx = Math.abs(px - gw/2) / (gw/2);
@@ -928,10 +928,10 @@
       }
 
       /* place grass tiles using decoupled logical grid */
-      for (var r = 0; r < GRID; r+=4) {
-        for (var c = 0; c < GRID; c+=4) {
-          var isoObj = cartToIso(c + 1.5, r + 1.5);
-          var tex = ((c/4) + (r/4)) % 2 === 0 ? 'grass_tile' : 'grass_tile_2';
+      for (var r = 0; r < GRID; r+=16) {
+        for (var c = 0; c < GRID; c+=16) {
+          var isoObj = cartToIso(c + 7.5, r + 7.5);
+          var tex = ((c/16) + (r/16)) % 2 === 0 ? 'grass_tile' : 'grass_tile_2';
           scene.add.image(isoObj.x + ox + TILE_W / 2, isoObj.y + oy + TILE_H / 2, tex).setDepth(0);
         }
       }
@@ -997,38 +997,7 @@
       /* CoC: enemy kingdoms */
       placeEnemyKingdoms(scene, ox, oy);
 
-      /* CoC: fog of war */
-      initFog(scene, ox, oy);
-      var spawnTile = worldToTile(spX, spY, ox, oy);
-      revealFogAround(scene, spawnTile.tx, spawnTile.ty, FOG_RADIUS, ox, oy);
-
-      /* update fog dynamically for units and town centers */
-      var fogTick = 0;
-      scene.events.on('update', function() {
-        fogTick++;
-        if (fogTick % 10 !== 0) return; // Optimize: only recalculate fog every 10 frames
-        
-        var revealTargets = [];
-        if (playerSprite) revealTargets.push(playerSprite);
-        if (npcSprites) revealTargets = revealTargets.concat(npcSprites);
-        if (scene._troops) revealTargets = revealTargets.concat(scene._troops);
-        
-        if (scene._buildings) {
-          for (var i = 0; i < scene._buildings.length; i++) {
-            if (scene._buildings[i].type === 'workers_hut' && scene._buildings[i].is_completed) {
-              var bx = scene._buildings[i].tx;
-              var by = scene._buildings[i].ty;
-              var wPos = tileToWorld(bx, by, ox, oy);
-              revealTargets.push({x: wPos.x, y: wPos.y});
-            }
-          }
-        }
-        
-        for (var i = 0; i < revealTargets.length; i++) {
-          var pt = worldToTile(revealTargets[i].x, revealTargets[i].y, ox, oy);
-          revealFogAround(scene, pt.tx, pt.ty, 24, ox, oy); // Dynamic 24-tile vision radius
-        }
-      });
+      /* CoC: fog of war (Disabled per user request for smooth play) */
 
       /* Dynamic Hostile Aggro System */
       var aggroTick = 0;
@@ -2155,21 +2124,7 @@
           if (isCleared) {
             revealedTiles[c + ',' + r] = true;
             
-            // clear a slightly larger fog area so it perfectly matches the expanded feel
-            for(var dr=-8; dr<=8; dr++) {
-              for(var dc=-8; dc<=8; dc++) {
-                var tx = c + dc;
-                var ty = r + dr;
-                var fogTx = tx - (tx % 4);
-                var fogTy = ty - (ty % 4);
-                var fg = fogSprites[fogTx + ',' + fogTy];
-                if (fg) {
-                  fg.destroy();
-                  delete fogSprites[fogTx + ',' + fogTy];
-                  revealedTiles[fogTx + ',' + fogTy] = true;
-                }
-              }
-            }
+            // Fog clearing logic removed for performance
             continue;
           }
 
@@ -2199,56 +2154,13 @@
       }
     }
 
-    /* ─── Fog of War ─── */
+    /* ─── Fog of War (Disabled) ─── */
     function initFog(scene, ox, oy) {
-      fogSprites = {};
-      revealedTiles = {};
-      var fogStep = 8;
-      for (var r = 0; r < GRID; r += fogStep) {
-        for (var c = 0; c < GRID; c += fogStep) {
-          // Center of the 8x8 block is at c + 3.5, r + 3.5
-          var posObj = cartToIso(c + 3.5, r + 3.5);
-          var pos = { x: posObj.x + ox + TILE_W/2, y: posObj.y + oy + TILE_H/2 };
-          var fg = scene.add.graphics().setDepth(500);
-          fg.fillStyle(0x061006, 0.98); // Darker fog for immersion
-          
-          var gw = 128; var gh = 64; // 8x8 block dimensions
-          fg.fillPoints([
-            { x: pos.x,        y: pos.y - gh / 2 },
-            { x: pos.x + gw/2, y: pos.y },
-            { x: pos.x,        y: pos.y + gh / 2 },
-            { x: pos.x - gw/2, y: pos.y },
-          ], true);
-          fogSprites[c + ',' + r] = fg;
-        }
-      }
+      // Disabled for smooth play
     }
 
     function revealFogAround(scene, cx, cy, radius, ox, oy) {
-      for (var dr = -radius; dr <= radius; dr++) {
-        for (var dc = -radius; dc <= radius; dc++) {
-          var tx = Math.round(cx + dc);
-          var ty = Math.round(cy + dr);
-          if (tx < 0 || ty < 0 || tx >= GRID || ty >= GRID) continue;
-          if (Math.sqrt(dc*dc + dr*dr) > radius) continue;
-          
-          var fogTx = tx - (tx % 8);
-          var fogTy = ty - (ty % 8);
-          var key = fogTx + ',' + fogTy;
-          
-          if (revealedTiles[key]) continue;
-          revealedTiles[key] = true;
-          var fg = fogSprites[key];
-          if (fg) {
-            (function(f) {
-              scene.tweens.add({ targets: f, alpha: 0, duration: 350,
-                onComplete: function() { if (f && f.active) f.destroy(); }
-              });
-            })(fg);
-            delete fogSprites[key];
-          }
-        }
-      }
+      // Disabled for smooth play
     }
 
     /* ─── Enemy Kingdoms ─── */
