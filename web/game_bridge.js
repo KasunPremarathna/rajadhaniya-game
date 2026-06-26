@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.4.7';
+  var GAME_ASSET_VERSION = 'v1.4.8';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -1888,9 +1888,11 @@
       var timerEvent = scene.time.addEvent({
         delay: remainingMs,
         callback: function() {
-          if (bgBar) bgBar.destroy();
-          if (fgBar) fgBar.destroy();
-          if (timerLabel) timerLabel.destroy();
+          // IMPORTANT: remove the update listener FIRST, before destroying objects
+          scene.events.off('update', updateFn);
+          if (bgBar && bgBar.active) bgBar.destroy();
+          if (fgBar && fgBar.active) fgBar.destroy();
+          if (timerLabel && timerLabel.active) timerLabel.destroy();
           
           finishConstruction(scene, building, config);
         }
@@ -1899,10 +1901,12 @@
       var durationMs = (config.construction_duration_seconds || 5) * 1000;
 
       var updateFn = function() {
-        if (!fgBar.active) {
+        if (!fgBar || !fgBar.active) {
           scene.events.off('update', updateFn);
           return;
         }
+        if (!bgBar || !bgBar.active || !timerLabel || !timerLabel.active) return;
+        
         var elapsedMs = Date.now() - (building.completion_timestamp - durationMs);
         var p = Math.max(0, Math.min(1, elapsedMs / durationMs));
         
