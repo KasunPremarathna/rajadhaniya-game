@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.5.3';
+  var GAME_ASSET_VERSION = 'v1.5.4';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -139,6 +139,13 @@
         }
         if (parsedConfig.global) {
           GLOBAL_CONFIG = parsedConfig.global;
+        }
+        if (parsedConfig.eras) {
+          for (var i = 0; i < parsedConfig.eras.length; i++) {
+            if (parsedConfig.eras[i].id === eId && parsedConfig.eras[i].tasks) {
+              Object.assign(TASKS_CONFIG, parsedConfig.eras[i].tasks);
+            }
+          }
         }
       } catch (e) {
         console.error('[Bridge] Failed to parse configJson:', e);
@@ -3508,10 +3515,11 @@
         onComplete: function () { res.sprite.destroy(); },
       });
 
-      var msgName = window.gameLanguage === 'si' ? cfg.sinLabel : cfg.label;
-      var msg = cfg.icon + ' +1 ' + msgName + ' (' + current + '/' + cfg.req + ')';
-      floatText(scene, msg, res.sprite.x, res.sprite.y - 30, '#D4AF37');
-
+      if (cfg) {
+        var msgName = window.gameLanguage === 'si' ? cfg.sinLabel : cfg.label;
+        var msg = cfg.icon + ' +1 ' + msgName + ' (' + current + '/' + cfg.req + ')';
+        floatText(scene, msg, res.sprite.x, res.sprite.y - 30, '#D4AF37');
+      }
       var pTex = (res.type === 'tree') ? 'leaf' : 'spark';
       playHarvestEffect(scene, res.sprite.x, res.sprite.y, pTex);
 
