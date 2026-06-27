@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.5.4';
+  var GAME_ASSET_VERSION = 'v1.5.5';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -350,13 +350,16 @@
     var targetRect = (typeof rangeObj === 'object' && rangeObj !== null) ? rangeObj : null;
     var range = targetRect ? 0 : (rangeObj || 0);
 
-    var openSet = [{ x: x0, y: y0, g: 0, f: 0, parent: null }];
+    var startKey = x0 + ',' + y0;
+    var startNode = { x: x0, y: y0, g: 0, f: 0, parent: null };
+    var openSet = [startNode];
+    var openSetMap = {};
+    openSetMap[startKey] = startNode;
+    
     var closedSet = {};
     var maxStepsTotal = 5000;
     var stepsTaken = 0;
     
-    function makeKey(x, y) { return x + ',' + y; }
-
     function heuristic(x, y) {
       if (targetRect) {
         var dx = Math.max(targetRect.tx - x, 0, x - (targetRect.tx + targetRect.w - 1));
@@ -371,9 +374,22 @@
       while(openSet.length > 0 && stepsTaken < maxStepsTotal && stepsThisFrame < 300) {
         stepsTaken++;
         stepsThisFrame++;
-        openSet.sort(function(a, b) { return a.f - b.f; });
-        var current = openSet.shift();
-        var key = makeKey(current.x, current.y);
+        
+        // O(N) minimum find instead of O(N log N) full sort
+        var lowestIndex = 0;
+        for (var i = 1; i < openSet.length; i++) {
+          if (openSet[i].f < openSet[lowestIndex].f) {
+            lowestIndex = i;
+          }
+        }
+        var current = openSet[lowestIndex];
+        
+        // Remove from array and map
+        openSet[lowestIndex] = openSet[openSet.length - 1]; // Fast remove
+        openSet.pop();
+        
+        var key = current.x + ',' + current.y;
+        delete openSetMap[key];
         
         var reached = false;
         if (targetRect) {
@@ -400,23 +416,30 @@
         for (var i = 0; i < neighbors.length; i++) {
           var n = neighbors[i];
           if (n.x < 0 || n.x >= GRID || n.y < 0 || n.y >= GRID) continue;
-          if (scene._barriers && scene._barriers[makeKey(n.x, n.y)]) continue; // fence = absolute barrier
-          if (scene._occupied[makeKey(n.x, n.y)]) continue; // fully block since we stop adjacent anyway
-          if (closedSet[makeKey(n.x, n.y)]) continue;
+          
+          var nKey = n.x + ',' + n.y;
+          if (scene._barriers && scene._barriers[nKey]) continue; // fence = absolute barrier
+          if (scene._occupied[nKey]) continue; // fully block since we stop adjacent anyway
+          if (closedSet[nKey]) continue;
           
           var tentativeG = current.g + 1;
-          var inOpen = openSet.find(function(node) { return node.x === n.x && node.y === n.y; });
+          var inOpen = openSetMap[nKey]; // O(1) lookup
+          
           if (!inOpen) {
-            openSet.push({x: n.x, y: n.y, g: tentativeG, f: tentativeG + heuristic(n.x, n.y), parent: current});
+            var newNode = {x: n.x, y: n.y, g: tentativeG, f: tentativeG + heuristic(n.x, n.y), parent: current};
+            openSet.push(newNode);
+            openSetMap[nKey] = newNode;
           } else if (tentativeG < inOpen.g) {
-            inOpen.g = tentativeG; inOpen.f = tentativeG + heuristic(n.x, n.y); inOpen.parent = current;
+            inOpen.g = tentativeG; 
+            inOpen.f = tentativeG + heuristic(n.x, n.y); 
+            inOpen.parent = current;
           }
         }
       }
       if (openSet.length > 0 && stepsTaken < maxStepsTotal) {
         scene.time.delayedCall(1, processChunk);
       } else {
-        callback([]);
+        callback([]); // Failed to find path in max steps
       }
     }
     processChunk();
