@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.5.2';
+  var GAME_ASSET_VERSION = 'v1.5.3';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -611,7 +611,10 @@
 
         /* Load Generated Assets Dynamically Based on Era */
         var v = '?v=' + GAME_ASSET_VERSION;
-        var eraFolder = 'assets/game/images/sprites/' + eraId + '/';
+        // Temporary fallback: Only 'prehistoric' assets exist right now.
+        // If the player advances to another era, use prehistoric assets to prevent 404 crashes/green screens.
+        var safeEraId = (eraId === 'prehistoric') ? 'prehistoric' : 'prehistoric';
+        var eraFolder = 'assets/game/images/sprites/' + safeEraId + '/';
         var commonFolder = 'assets/game/images/sprites/';
 
         s.load.audio('loading_music', 'assets/game/audio/loading_music.mp3' + v);
