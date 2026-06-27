@@ -29,6 +29,14 @@ class _EraSelectionScreenState extends State<EraSelectionScreen> {
     EraSelectionScreen.onVersionMismatch = _resetEntering;
     EraSelectionScreen.onShowUpdateDialog = _showDialog;
     _loadLanguage();
+
+    // Immediately check for asset version mismatch upon app load
+    // so the user sees the update dialog before tapping an era.
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        JsBridge.checkAssetVersion();
+      }
+    });
   }
 
   Future<void> _loadLanguage() async {
