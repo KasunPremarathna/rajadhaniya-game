@@ -6,8 +6,8 @@ import 'dart:convert';
 class JsBridge {
   JsBridge._();
 
-  static void callInitGameGrid(String eraId, String eraName, String eraBonus, double lat, double lng, String lang) {
-    js.context.callMethod('initGameGrid', [eraId, eraName, eraBonus, lat, lng, lang]);
+  static void callInitGameGrid(String eraId, String eraName, String eraBonus, double lat, double lng, String lang, String configJson) {
+    js.context.callMethod('initGameGrid', [eraId, eraName, eraBonus, lat, lng, lang, configJson]);
   }
 
   static void showFlutterUi() {
@@ -24,6 +24,11 @@ class JsBridge {
 
   static void enterBuildMode(String buildingType) {
     js.context.callMethod('enterBuildMode', [buildingType]);
+  }
+
+  static void spawnTroop(Map<String, dynamic> payload) {
+    payload['action'] = 'spawn_troop';
+    callJs('flutterGameAction', payload);
   }
 
   /// Generic JS bridge call — calls window[fnName](jsonEncode(args))

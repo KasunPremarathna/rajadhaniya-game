@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "999174467302",
+    "project_id": "rajadhanigamesl",
+    "storage_bucket": "rajadhanigamesl.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:999174467302:android:55354416d69f7cef7f1527",
+        "android_client_info": {
+          "package_name": "ktec.rajadhaniya.com"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "999174467302-m3v18132b5qsbst9fu5lpq64cdealaqi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "ktec.rajadhaniya.com",
+            "certificate_hash": "4a09f73f22a24961acad66cce4dd0bb2374e1b7a"
+          }
+        },
+        {
+          "client_id": "999174467302-psvhrhodk90t0kdlvh6d5lshepd8hd13.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "ktec.rajadhaniya.com",
+            "certificate_hash": "54321d263f978333c4c21f61cabae05094fc7963"
+          }
+        },
+        {
+          "client_id": "999174467302-ps48u289usjafc8ksgh7ki10uqif77oe.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjtDCSbXjGaijuGNDk-vjYLrSomxAqe_A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "999174467302-ps48u289usjafc8ksgh7ki10uqif77oe.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

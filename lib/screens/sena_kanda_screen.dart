@@ -1,5 +1,18 @@
 import 'package:flutter/material.dart';
 import '../models/troop.dart';
+import '../config/game_config.dart';
+import 'dart:async';
+import '../bridge/js_bridge.dart';
+
+class QueuedTroop {
+  final Troop troop;
+  final int totalTimeSeconds;
+  int remainingSeconds;
+
+  QueuedTroop(this.troop)
+      : totalTimeSeconds = troop.trainingTimeSeconds,
+        remainingSeconds = troop.trainingTimeSeconds;
+}
 
 class SenaKandaScreen extends StatefulWidget {
   final Function(String) translate;
@@ -10,24 +23,47 @@ class SenaKandaScreen extends StatefulWidget {
 }
 
 class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProviderStateMixin {
-  final int housingSpaceLimit = 50;
-  Map<String, int> trainingQueue = {}; // troop id -> count
+  late final int housingSpaceLimit;
+  List<QueuedTroop> activeQueue = [];
+  Timer? _trainingTimer;
+  Troop? inspectingTroop;
+
+  @override
+  void initState() {
+    super.initState();
+    housingSpaceLimit = GameConfig.instance.global['housingSpaceLimit'] ?? 50;
+    _trainingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (activeQueue.isNotEmpty) {
+        setState(() {
+          activeQueue.first.remainingSeconds--;
+          if (activeQueue.first.remainingSeconds <= 0) {
+            final trained = activeQueue.removeAt(0);
+            JsBridge.spawnTroop({'troopId': trained.troop.id});
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _trainingTimer?.cancel();
+    super.dispose();
+  }
 
   int get currentHousingSpace {
     int space = 0;
-    trainingQueue.forEach((id, count) {
-      final troop = allTroops.firstWhere((t) => t.id == id);
-      space += troop.housingSpaceCost * count;
-    });
+    for (var q in activeQueue) {
+      space += q.troop.housingSpaceCost;
+    }
     return space;
   }
 
   int get totalTrainingTimeSeconds {
     int total = 0;
-    trainingQueue.forEach((id, count) {
-      final troop = allTroops.firstWhere((t) => t.id == id);
-      total += troop.trainingTimeSeconds * count;
-    });
+    for (var q in activeQueue) {
+      total += q.remainingSeconds;
+    }
     return total;
   }
 
@@ -44,7 +80,7 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
     if (currentHousingSpace + troop.housingSpaceCost > housingSpaceLimit) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.translate('❌ Not enough housing space!')),
+          content: Text(widget.translate('Housing limit reached! Build more Wadiya (Houses)')),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
@@ -52,17 +88,15 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
       return;
     }
     setState(() {
-      trainingQueue[troop.id] = (trainingQueue[troop.id] ?? 0) + 1;
+      activeQueue.add(QueuedTroop(troop));
     });
   }
 
   void _removeTroop(Troop troop) {
-    if ((trainingQueue[troop.id] ?? 0) > 0) {
+    final index = activeQueue.lastIndexWhere((q) => q.troop.id == troop.id);
+    if (index != -1) {
       setState(() {
-        trainingQueue[troop.id] = trainingQueue[troop.id]! - 1;
-        if (trainingQueue[troop.id] == 0) {
-          trainingQueue.remove(troop.id);
-        }
+        activeQueue.removeAt(index);
       });
     }
   }
@@ -70,240 +104,498 @@ class _SenaKandaScreenState extends State<SenaKandaScreen> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.95),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.95),
+          color: const Color(0xFF231E1B), // Dark COC background
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 2),
+          border: Border.all(color: const Color(0xFF5E4B3C), width: 3),
         ),
-        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             // Handle bar
+            const SizedBox(height: 8),
             Container(
               width: 40,
               height: 4,
               decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2)),
             ),
-            const SizedBox(height: 16),
-            Text(
-              widget.translate('Sena Kanda (Training Barracks)'),
-              style: const TextStyle(color: Color(0xFFD4A017), fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-            ),
-            const SizedBox(height: 16),
-
-            // Top Status Bar
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2C2520),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildStatusItem(Icons.group, widget.translate('Housing Space'), '$currentHousingSpace / $housingSpaceLimit'),
-                  Container(width: 1, height: 40, color: Colors.white12),
-                  _buildStatusItem(Icons.timer, widget.translate('Total Time'), _formatTime(totalTrainingTimeSeconds)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Troop Selection Grid
-            Expanded(
-              flex: 3,
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 2.2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: allTroops.length,
-                itemBuilder: (context, index) {
-                  final troop = allTroops[index];
-                  final queuedCount = trainingQueue[troop.id] ?? 0;
-                  return _buildTroopCard(troop, queuedCount);
-                },
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            const Divider(color: Colors.white24),
             const SizedBox(height: 8),
 
-            // Active Training Queue
-            Text(
-              widget.translate('Active Training Queue'),
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              flex: 1,
-              child: trainingQueue.isEmpty
-                  ? Center(
-                      child: Text(
-                        widget.translate('No troops in queue.'),
-                        style: const TextStyle(color: Colors.white54),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: trainingQueue.length,
-                      itemBuilder: (context, index) {
-                        final id = trainingQueue.keys.elementAt(index);
-                        final count = trainingQueue[id]!;
-                        final troop = allTroops.firstWhere((t) => t.id == id);
-                        return _buildQueueItem(troop, count);
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusItem(IconData icon, String label, String value) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(icon, color: Colors.white54, size: 16),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  Widget _buildTroopCard(Troop troop, int queuedCount) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [const Color(0xFF3E2723), const Color(0xFF2C1914)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: queuedCount > 0 ? const Color(0xFFD4A017) : Colors.white12, width: queuedCount > 0 ? 2 : 1),
-      ),
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: [
-          // Icon Placeholder
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5)),
-            ),
-            child: const Icon(Icons.person, color: Color(0xFFD4A017)),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+            // Header Title
+            Stack(
+              alignment: Alignment.center,
               children: [
-                Text(
-                  troop.name.split(' (')[0], // Only English part for UI space
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Align(
+                  alignment: Alignment.center,
+                  child: Text(
+                    inspectingTroop != null
+                        ? "${inspectingTroop!.name.split(' (')[0]} (Level 1)"
+                        : widget.translate('Barracks (Level 1)'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 2, offset: Offset(1, 1))],
+                    ),
+                  ),
                 ),
-                Text(
-                  '${widget.translate('Cost')}: ${troop.housingSpaceCost} ${widget.translate('Space')}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                if (inspectingTroop != null)
+                  Positioned(
+                    right: 16,
+                    child: GestureDetector(
+                      onTap: () => setState(() => inspectingTroop = null),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.black, width: 2),
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ),
+                if (inspectingTroop != null)
+                   Positioned(
+                    left: 16,
+                    child: GestureDetector(
+                      onTap: () => setState(() => inspectingTroop = null),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.black, width: 2),
+                        ),
+                        child: const Icon(Icons.arrow_back, color: Colors.black, size: 20),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Divider(color: Color(0xFF5E4B3C), thickness: 3, height: 0),
+
+            Expanded(
+              child: inspectingTroop != null ? _buildDetailView() : _buildGridView(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGridView() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          // Top Active Queue
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFDCD2B0), // Beige CoC background for top section
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF8B7765), width: 2),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Train troops $currentHousingSpace/$housingSpaceLimit',
+                        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      // Horizontal list of actively training units
+                      SizedBox(
+                        height: 65,
+                        child: activeQueue.isEmpty
+                            ? Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black12,
+                                  border: Border.all(color: Colors.black26),
+                                ),
+                              )
+                            : ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: activeQueue.map((q) => q.troop.id).toSet().length,
+                                itemBuilder: (context, index) {
+                                  final distinctIds = activeQueue.map((q) => q.troop.id).toSet().toList();
+                                  final id = distinctIds[index];
+                                  final relatedTroops = activeQueue.where((q) => q.troop.id == id).toList();
+                                  final troop = relatedTroops.first.troop;
+                                  final count = relatedTroops.length;
+                                  bool isActive = index == 0;
+                                  double progress = isActive 
+                                     ? (1.0 - (relatedTroops.first.remainingSeconds / relatedTroops.first.totalTimeSeconds))
+                                     : 0.0;
+                                  return _buildHorizontalQueueSlot(troop, count, isActive, progress);
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
-                Text(
-                  '${widget.translate('Time')}: ${troop.trainingTime}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                const SizedBox(width: 8),
+                // Total Time and Finish Button
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('Total time:', style: TextStyle(color: Colors.black54, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Text(
+                      _formatTime(totalTrainingTimeSeconds).toUpperCase(),
+                      style: const TextStyle(color: Colors.black, fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text('Finish Training:', style: TextStyle(color: Colors.black54, fontSize: 9)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7CB342),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF33691E), width: 2),
+                      ),
+                      child: Row(
+                        children: [
+                           Text(
+                             ((totalTrainingTimeSeconds / 60).ceil() + 1).toString(),
+                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                           ),
+                           const SizedBox(width: 4),
+                           const Icon(Icons.diamond, color: Color(0xFF00E676), size: 12),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          // Action Buttons
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              GestureDetector(
-                onTap: () => _addTroop(troop),
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                  child: const Icon(Icons.add, color: Colors.green, size: 16),
-                ),
+          const SizedBox(height: 12),
+          // Troop Roster Grid
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF88A9BB), // CoC light blue background
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF537385), width: 2),
               ),
-              const SizedBox(height: 4),
-              Text(queuedCount.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: () => _removeTroop(troop),
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                  child: const Icon(Icons.remove, color: Colors.red, size: 16),
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  childAspectRatio: 0.8,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
                 ),
+                itemCount: allTroops.length,
+                itemBuilder: (context, index) {
+                  return _buildRosterCard(allTroops[index]);
+                },
               ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildQueueItem(Troop troop, int count) {
+  Widget _buildHorizontalQueueSlot(Troop troop, int count, bool isActive, double progress) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2520),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Row(
+      width: 55,
+      margin: const EdgeInsets.only(right: 6),
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(4)),
-            child: const Icon(Icons.person, color: Color(0xFFD4A017), size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
+            decoration: BoxDecoration(
+              color: const Color(0xFF435A6B),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF2E3E4B), width: 2),
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${troop.name.split(' (')[0]} x$count',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Center(
+                    child: Icon(Icons.person, color: const Color(0xFFD4A017), size: 28),
+                  ),
                 ),
-                const SizedBox(height: 6),
-                ClipRRect(
+                if (isActive)
+                   Container(
+                     height: 14,
+                     width: double.infinity,
+                     color: Colors.black45,
+                     child: Stack(
+                       alignment: Alignment.centerLeft,
+                       children: [
+                         FractionallySizedBox(
+                           widthFactor: progress,
+                           child: Container(color: Colors.green),
+                         ),
+                         Center(
+                           child: Text(
+                             _formatTime(activeQueue.first.remainingSeconds),
+                             style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                           ),
+                         ),
+                       ],
+                     ),
+                   ),
+              ],
+            ),
+          ),
+          // xCount Badge
+          Positioned(
+            top: -2,
+            left: -2,
+            child: Text(
+              '${count}x',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                shadows: [Shadow(color: Colors.black, blurRadius: 2)],
+              ),
+            ),
+          ),
+          // Minus Button
+          Positioned(
+            top: -6,
+            right: -6,
+            child: GestureDetector(
+              onTap: () => _removeTroop(troop),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                padding: const EdgeInsets.all(2),
+                child: const Icon(Icons.remove, color: Colors.white, size: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRosterCard(Troop troop) {
+    return GestureDetector(
+      onTap: () => _addTroop(troop),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF5D7F96),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFF385060), width: 2),
+        ),
+        child: Stack(
+          children: [
+            Center(child: Icon(Icons.person, color: const Color(0xFFD4A017), size: 40)),
+            // Info Icon
+            Positioned(
+              top: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: () => setState(() => inspectingTroop = troop),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0277BD),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  padding: const EdgeInsets.all(2),
+                  child: const Icon(Icons.info_outline, color: Colors.white, size: 14),
+                ),
+              ),
+            ),
+            // Level
+            Positioned(
+              top: 4,
+              left: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
                   borderRadius: BorderRadius.circular(4),
-                  child: const LinearProgressIndicator(
-                    value: 0.35, // Static mock progress
-                    backgroundColor: Colors.black45,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-                    minHeight: 6,
+                ),
+                child: const Text('1', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            // Cost Banner
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(4)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      troop.unlockBuildCost.split(' ')[0], // Extract just the number for now
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.water_drop, color: Colors.purpleAccent, size: 10),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailView() {
+    final troop = inspectingTroop!;
+    // Parse stats
+    final atkObj = GameConfig.instance.troops.firstWhere((t) => t['id'] == troop.id);
+    final int dmg = atkObj['attack_damage'] ?? 10;
+    final int speedMs = atkObj['attack_speed_ms'] ?? 1000;
+    final int dps = (dmg / (speedMs / 1000)).round();
+    final int hp = troop.housingSpaceCost * 150; // Mock HP
+
+    return Container(
+      color: const Color(0xFFDCD2B0), // Beige background
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Row(
+              children: [
+                // Avatar Left Side
+                Expanded(
+                  flex: 1,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: Icon(Icons.person, size: 120, color: const Color(0xFF3E2723)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Stat Bars Right Side
+                Expanded(
+                  flex: 1,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildStatBar('Damage per second:', dps.toString(), dps / 100, Colors.orange),
+                      const SizedBox(height: 12),
+                      _buildStatBar('Hitpoints:', hp.toString(), hp / 1000, Colors.green),
+                      const SizedBox(height: 12),
+                      _buildStatBar('Training Cost:', troop.unlockBuildCost, 0.5, Colors.purple),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          Text(
-            _formatTime(troop.trainingTimeSeconds * count),
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          const SizedBox(height: 16),
+          // Metadata Rows
+          Expanded(
+            flex: 3,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0E6CD),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF8B7765), width: 1),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildMetaRow('Favorite target:', troop.role),
+                    _buildMetaRow('Damage type:', troop.ability),
+                    _buildMetaRow('Targets:', 'Ground'),
+                    _buildMetaRow('Housing Space:', troop.housingSpaceCost.toString()),
+                    _buildMetaRow('Training Time:', troop.trainingTime),
+                    _buildMetaRow('Movement speed:', '24'),
+                    const SizedBox(height: 16),
+                    Text(
+                      troop.description,
+                      style: const TextStyle(color: Color(0xFF2C567A), fontSize: 12, fontStyle: FontStyle.italic),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatBar(String label, String value, double progress, Color barColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+           children: [
+             Text(label, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+           ],
+        ),
+        const SizedBox(height: 4),
+        Stack(
+          alignment: Alignment.centerLeft,
+          children: [
+            Container(
+              height: 16,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            FractionallySizedBox(
+              widthFactor: progress.clamp(0.0, 1.0),
+              child: Container(
+                height: 16,
+                decoration: BoxDecoration(
+                  color: barColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.black26, width: 1),
+                ),
+              ),
+            ),
+            Padding(
+               padding: const EdgeInsets.only(left: 8),
+               child: Text(value, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 1)])),
+            )
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetaRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(color: Color(0xFF1976D2), fontWeight: FontWeight.bold, fontSize: 12)),
+              Text(value, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
+            ],
+          ),
+          const Divider(color: Colors.black12, height: 8),
         ],
       ),
     );

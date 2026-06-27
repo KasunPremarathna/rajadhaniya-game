@@ -34,11 +34,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
+    @font-face {
+      font-family: 'GameFont';
+      src: url('assets/game/fonts/NotoSansSinhala-Regular.ttf') format('truetype');
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%;
       overflow: hidden;
-      background: #1a1a2e;
+      background: #689f38; /* Match the Phaser grass background — eliminates dark letterbox bars */
     }
     #flutter-container {
       display: flex;
@@ -106,7 +110,7 @@
 
   <div id="flutter-container">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
-    <script src="game_bridge.js"></script>
+    <script src="game_bridge.js?v=1.5.6"></script>
   </div>
   <script>
     let pct = 0;
@@ -118,9 +122,27 @@
 
     // Force Flutter to use HTML renderer to avoid WebGL context conflicts with Phaser
     window.addEventListener('load', function() {
+      // Force immediate control and reload when new service worker found
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.addEventListener('updatefound', function() {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  window.location.reload();
+                }
+              });
+            });
+          }
+        });
+      }
+
       _flutter.loader.load({
         onEntrypointLoaded: async function(engineInitializer) {
-          const appRunner = await engineInitializer.initializeEngine();
+          const appRunner = await engineInitializer.initializeEngine({
+            renderer: 'html'
+          });
           
           clearInterval(splashInterval);
           document.getElementById('splash-fill').style.animation = 'none';

@@ -133,6 +133,10 @@ When all tasks reach 100%:
 - **Flutter Web only**: No mobile-only plugins (`webview_flutter` etc.).
 - **WASM compatible**: Conditional imports (`dart.library.js_interop`) in bridge files and platform registries.
 - **Phaser loading**: `loading_bg` image must exist at `assets/game/images/loadingscreen.png` before `buildGame()` runs.
+- **Character Asset Rule**: 
+  - **Single Action (e.g., 4-frame walk)**: `1024 x 256` total size.
+  - **Full Character Sheet (walk, idle, harvest)**: `1024 x 1024` or `2048 x 2048` total size.
+  - **Frame Requirement**: Every single frame inside the sheet MUST be a perfect `256 x 256` square. They are rendered in-game using `.setScale(0.25)`.
 
 ## Common Gotchas
 - Never use `s.add.image('loading_bg')` in `preload()` — the image hasn't loaded yet. Use a `Graphics` solid background and swap in `create()`.
@@ -151,6 +155,48 @@ When you modify `web/game_bridge.js` or any Phaser-related file, update this sec
 4. Side effects or edge cases to be aware of
 
 ### Change Log
+
+**2026-06-22**: Smart Fence Building.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.44`.
+- **In-Game Overlay**: Tapping a Fence bypasses the Flutter Contextual Menu and renders a 4-way directional arrow overlay directly on the Phaser grid.
+- **Directional Growing**: Tapping an arrow instantly deducts 2 wood, places a new fence segment in that direction, and snaps the overlay to the new fence to allow continuous chain building.
+- **Collision Checking**: The directional arrows strictly evaluate `scene._occupied` and will hide themselves if the target expansion tile is blocked by another structure or resource.
+- **Deletion**: Added an in-game ❌ button to the overlay that removes the fence and refunds 1 wood.
+
+**2026-06-22**: Age of Empires Phase 1 - Automated Resource Gathering.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.43`.
+- **Villager Automation**: If a unit is selected, tapping a resource (Tree, Rock, Deer) bypasses the contextual menu. The unit automatically walks to the resource and begins continuously harvesting it.
+- **Continuous Yield Loop**: Created `startAutomatedHarvest()`. The unit plays a chopping animation and automatically extracts 1 resource every 2 seconds, playing visual effects and updating the Flutter HUD dynamically.
+- **Resource Depletion**: Added `maxYield: 50` to all generated resources. When a resource hits 0 yield, its sprite is permanently destroyed and the matrix tile is freed.
+- **Inspect Mode**: Tapping a resource without a unit selected still opens the Contextual Menu, allowing the player to inspect its remaining yield.
+
+**2026-06-22**: Age of Empires RTS Control Scheme Migration & Free Camera.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.42`.
+- **RTS Selection System**: Replaced the global auto-move interaction with an explicit Age of Empires style RTS selection system. Added `selectedUnit` state. Players must now tap their character to select it (indicated by a pulsing `selectionRing` graphic) before they can issue movement or harvest commands.
+- **Dynamic Interaction**: Tapping empty space without a unit selected now correctly ignores the input.
+- **Instant Building Inspection**: Bypassed the selection requirement for Buildings. Tapping any building (House, Farm, Fence, etc.) instantly opens its contextual menu without needing to select a unit or walk over to it, mirroring classic RTS structure inspection.
+- **Free Camera Panning**: Decoupled the main camera from the `playerSprite` lock. Users can now freely swipe/drag the map using `pointermove` to explore the isometric grid.
+- **Tap vs Drag Resolution**: Migrated the core `pointerdown` raycasting logic to `pointerup` and implemented a 10-pixel drag threshold. This strictly prevents accidental unit commands from firing when the user drags their finger to pan the camera.
+- **Find Player HUD**: Added a new `centerCameraOnPlayer()` JS bridge API. Added a 'My Location' crosshair button to the bottom-right Flutter HUD in `KingdomViewScreen` that automatically tweens the camera back to the player character.
+
+**2026-06-21**: Map Expansion (Fog of War) & Master Config Centralization.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.18`.
+- **Backend Centralization**: Created `assets/config/game_master.json` as the single source of truth for Era configurations, Building costs, Troop stats, and Global settings. Refactored Flutter models (`HistoricalEra.dart`, `Troop.dart`) and Phaser `initGameGrid` to parse and sync data dynamically from this payload.
+- **Territory Expansion**: Implemented Clash of Clans style border expansion. Players can tap the dense `border_tree` ring to open a Contextual Menu and pay 100 Gold (`treeClearCost` from the JSON config) to permanently clear the 4x4 matrix space.
+- **Fog of War Dynamics**: Expanded the fog removal logic to permanently push back the dark fog around newly cleared border trees, simulating territory growth.
+- **Persistent Territory**: Hooked the cleared border tree coordinates into `localStorage` (`rajadhaniya_cleared_borders`) so the map physically expands and remembers its boundaries on every boot.
+
+**2026-06-21**: UI Scaling, Layout Fixes & Firestore Security.
+- **Version Bump**: Incremented `GAME_ASSET_VERSION` to `v1.3.17`.
+- **HUD Scaling**: Drastically scaled down the Flutter UI components (Player Profile, Resource/Task Bars, Sena Kanda Barracks, and Build Menu) within `KingdomViewScreen` and `SenaKandaScreen` to increase gameplay visibility on smaller landscape screens.
+- **RenderFlex Fix**: Wrapped the update dialog in `UpdateScreen` with a `FittedBox` to prevent `RenderFlex` overflow errors on landscape devices during the version mismatch flow.
+- **Building Sprite Scaling**: Applied a strict `.setScale(0.12)` in Phaser's `game_bridge.js` to `ghostBuilding` (during drag-and-drop placement), actively constructing buildings, and restored localStorage buildings to ensure they render at a suitable medium size on the isometric grid.
+- **Firestore Security**: Deployed robust schema validation rules to `firestore.rules`. Enforced that only whitelisted keys (`gold`, `tasks`, `era_id`, `era_name`) can be injected into the user's `game_data` payload, and strictly enforced data types (e.g., `gold` must be a number) to prevent malicious database bloat and payload injection.
+**2026-06-21**: Android Native WebView Integration & Unified Codebase.
+- **Dependencies**: Added `webview_flutter` plugin to `pubspec.yaml` to allow the Android application to render the WebGL Phaser game natively.
+- **Game Hosting**: Created a standalone `web/game.html` file that strips out the Flutter Engine and only loads the Phaser logic and `game_bridge.js`. Deployed this to Firebase Hosting.
+- **Bridge Abstraction**: Replaced the hardcoded `HtmlElementView` in `KingdomViewScreen` with a new conditional `GameViewWidget`. It uses `HtmlElementView` on the Web and `WebViewWidget` on Android/iOS.
+- **JS Event Rewiring**: Updated `game_bridge.js` to detect `window.FlutterBridge.postMessage` (Android WebView JS channel) as a fallback to `window._flutterCallback` (Flutter Web JS interop). Updated the `js_bridge_stub.dart` mobile stub to hold a `WebViewController` reference to pipe Flutter calls back down to the game.
 
 **2026-06-21**: Unified Cross-Platform Codebase Configuration & Deployment.
 - **Application IDs**: Updated `android/app/build.gradle.kts` namespace and `applicationId` to `ktec.rajadhaniya.com`.

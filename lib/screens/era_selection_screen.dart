@@ -4,6 +4,7 @@ import '../models/historical_era.dart';
 import '../bridge/js_bridge.dart';
 import 'kingdom_view_screen.dart';
 import 'language_selection_screen.dart';
+import '../config/game_config.dart';
 
 class EraSelectionScreen extends StatefulWidget {
   const EraSelectionScreen({super.key});
@@ -28,6 +29,14 @@ class _EraSelectionScreenState extends State<EraSelectionScreen> {
     EraSelectionScreen.onVersionMismatch = _resetEntering;
     EraSelectionScreen.onShowUpdateDialog = _showDialog;
     _loadLanguage();
+
+    // Immediately check for asset version mismatch upon app load
+    // so the user sees the update dialog before tapping an era.
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        JsBridge.checkAssetVersion();
+      }
+    });
   }
 
   Future<void> _loadLanguage() async {
@@ -118,7 +127,7 @@ class _EraSelectionScreenState extends State<EraSelectionScreen> {
       _entering = true;
       _selectedEra = era;
     });
-    JsBridge.callInitGameGrid(era.id, era.name, era.bonus, 0.0, 0.0, _language);
+    JsBridge.callInitGameGrid(era.id, era.name, era.bonus, 0.0, 0.0, _language, GameConfig.instance.toJsonString());
   }
 
   @override

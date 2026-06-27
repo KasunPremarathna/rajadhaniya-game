@@ -2,7 +2,45 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Ensures the user is logged in and trying to modify their own document
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Strictly enforces the document schema and prevents malicious data injection
+      function isValidWrite() {
+        let data = request.resource.data;
+        
+        // 1. Block any fields that aren't specifically used by the game
+        let allowedFields = ['uid', 'email', 'display_name', 'last_updated', 'game_data'];
+        let hasValidKeys = data.keys().hasOnly(allowedFields);
+        
+        // 2. Validate core metadata types (allows merge updates where fields might be missing)
+        let validUid = !('uid' in data) || data.uid == userId;
+        let validEmail = !('email' in data) || data.email is string || data.email == null;
+        let validName = !('display_name' in data) || data.display_name is string || data.display_name == null;
+        let validTime = !('last_updated' in data) || data.last_updated is timestamp;
+        
+        // 3. Validate the internal game_data map payload
+        let validGameData = !('game_data' in data) || (
+          data.game_data is map &&
+          // Block injected cheat/bloat fields inside game_data
+          data.game_data.keys().hasOnly(['gold', 'tasks', 'era_id', 'era_name', 'needs', 'buildings']) &&
+          // Validate types
+          (!('gold' in data.game_data) || data.game_data.gold is number) &&
+          (!('era_id' in data.game_data) || data.game_data.era_id is string) &&
+          (!('era_name' in data.game_data) || data.game_data.era_name is string) &&
+          (!('tasks' in data.game_data) || data.game_data.tasks is map) &&
+          (!('needs' in data.game_data) || data.game_data.needs is map) &&
+          (!('buildings' in data.game_data) || data.game_data.buildings is list)
+        );
+
+        return hasValidKeys && validUid && validEmail && validName && validTime && validGameData;
+      }
+
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidWrite();
     }
   }
 }

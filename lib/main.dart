@@ -11,19 +11,58 @@ import 'bridge/js_bridge.dart';
 import 'models/historical_era.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
+import 'config/game_config.dart';
+import 'package:flutter/foundation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  registerPhaserView();
-  final prefs = await SharedPreferences.getInstance();
-  final initialLang = prefs.getString('selected_language');
-  runApp(RajadhaniyaApp(initialLanguage: initialLang));
+  
+  try {
+    await GameConfig.instance.loadConfig();
+    
+    if (Firebase.apps.isEmpty) {
+      if (kIsWeb) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      } else {
+        await Firebase.initializeApp();
+      }
+    }
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+    } catch (e) {
+      debugPrint('Firestore persistence could not be enabled: $e');
+    }
+    registerPhaserView();
+    final prefs = await SharedPreferences.getInstance();
+    final initialLang = prefs.getString('selected_language');
+    runApp(RajadhaniyaApp(initialLanguage: initialLang));
+  } catch (e, stackTrace) {
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          backgroundColor: Colors.black,
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'CRITICAL INITIALIZATION ERROR:\n$e\n\n$stackTrace',
+                style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class RajadhaniyaApp extends StatefulWidget {
@@ -71,6 +110,12 @@ class _RajadhaniyaAppState extends State<RajadhaniyaApp> {
         );
       }
     } else if (type == 'game_started') {
+      final version = data['version'] as String?;
+      if (version != null) {
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('rajadhaniya_asset_version', version);
+        });
+      }
       EraSelectionScreen.onGameStarted?.call();
     }
   }
@@ -81,6 +126,7 @@ class _RajadhaniyaAppState extends State<RajadhaniyaApp> {
       title: 'Rajadhaniya',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFF689F38), // Match Phaser grass — no black letterbox
         textTheme: GoogleFonts.notoSansSinhalaTextTheme(),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF5D4037),

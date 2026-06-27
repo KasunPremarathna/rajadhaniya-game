@@ -1,0 +1,227 @@
+{
+  "global": {
+    "housingSpaceLimit": 50,
+    "treeClearCost": 100
+  },
+  "eras": [
+    {
+      "id": "prehistoric",
+      "name": "ප්‍රාග් ඓතිහාසික යුගය",
+      "englishName": "Prehistoric & Protohistoric",
+      "period": "c. 30,000 BCE – 500 BCE",
+      "bonus": "Hunting & Stone Tools +30%",
+      "icon": "🏹",
+      "lat": 6.6521,
+      "lng": 80.6922,
+      "tasks": {
+        "hunting": { "req": 3, "icon": "🏹", "label": "Hunting", "sinLabel": "වන සතුන් දඩයම", "resType": "deer" },
+        "wood": { "req": 10, "icon": "🪵", "label": "Wood Scraping", "sinLabel": "දැව එකතු කිරීම", "resType": "tree" },
+        "gem": { "req": 5, "icon": "💎", "label": "Gem Mining", "sinLabel": "මැණික්/ගල් කැණීම", "resType": "gem_rock" },
+        "house": { "req": 1, "icon": "🏠", "label": "Build House", "sinLabel": "නිවසක් හදන්න" },
+        "workers_hut": { "req": 1, "icon": "🛖", "label": "Maha Wadi Gedara", "sinLabel": "මහ වාඩි ගෙදර" }
+      }
+    },
+    {
+      "id": "anuradhapura",
+      "name": "අනුරාධපුර යුගය",
+      "englishName": "Anuradhapura Period",
+      "period": "c. 377 BCE – 1017 CE",
+      "bonus": "Farming & Irrigation +25%",
+      "icon": "🌾",
+      "lat": 8.3114,
+      "lng": 80.4037,
+      "tasks": {
+        "farm": { "req": 2, "icon": "🌾", "label": "Build Farms", "sinLabel": "ගොවිපලවල් හදන්න" },
+        "lake": { "req": 1, "icon": "💧", "label": "Dig Lake", "sinLabel": "වැවක් හදන්න" },
+        "fish": { "req": 10, "icon": "🐟", "label": "Harvest Fish", "sinLabel": "මාළු අල්ලන්න" },
+        "temple": { "req": 1, "icon": "🏛️", "label": "Build Temple", "sinLabel": "පන්සලක් හදන්න" },
+        "boat_house": { "req": 1, "icon": "🛶", "label": "Boat House", "sinLabel": "බෝට්ටු නිවස" },
+        "cow_farm": { "req": 1, "icon": "🐄", "label": "Cow Farm", "sinLabel": "එළකිරි ගොවිපල" }
+      }
+    },
+    {
+      "id": "polonnaruwa",
+      "name": "පොලොන්නරු යුගය",
+      "englishName": "Polonnaruwa Period",
+      "period": "1017 CE – 1232 CE",
+      "bonus": "Gold & International Trade +20%",
+      "icon": "🏯",
+      "lat": 7.9403,
+      "lng": 81.0028,
+      "tasks": {
+        "gold": { "req": 500, "icon": "🪙", "label": "Amass Gold", "sinLabel": "රත්‍රන් එකතු කිරීම" },
+        "mine": { "req": 2, "icon": "⛏️", "label": "Build Mines", "sinLabel": "පතල් හදන්න" }
+      }
+    },
+    {
+      "id": "transitional",
+      "name": "සංක්‍රාන්ති යුගය",
+      "englishName": "Transitional Period",
+      "period": "1232 CE – 1594 CE",
+      "bonus": "Fortress Defense & Training +25%",
+      "icon": "⛰️",
+      "lat": 7.8144,
+      "lng": 80.2224
+    },
+    {
+      "id": "colonial",
+      "name": "යටත්විජිත යුගය",
+      "englishName": "Colonial Era",
+      "period": "1505 CE – 1948 CE",
+      "bonus": "Cash Crops & Modern Roads +20%",
+      "icon": "🚢",
+      "lat": 6.0367,
+      "lng": 80.2170
+    },
+    {
+      "id": "modern",
+      "name": "නිදහසින් පසු වර්තමානය",
+      "englishName": "Independence to 2026",
+      "period": "1948 CE – 2026",
+      "bonus": "Full OSM Infrastructure Map",
+      "icon": "🏙️",
+      "lat": 6.9271,
+      "lng": 79.8612
+    }
+  ],
+  "buildings": {
+    "house":       { "w": 8, "h": 8, "texture": "house",       "costs": { "gold": 50, "wood": 5 }, "name": "Wadiya (House)", "icon": "🏠", "construction_duration_seconds": 10 },
+    "farm":        { "w": 8, "h": 8, "texture": "farm",        "costs": { "gold": 100, "wood": 10 }, "name": "Hunting Grounds / Farms", "icon": "🌾", "construction_duration_seconds": 15 },
+    "mine":        { "w": 8, "h": 8, "texture": "mine",        "costs": { "gold": 150, "wood": 5, "gem": 5 }, "name": "Mine", "icon": "⛏️", "construction_duration_seconds": 30 },
+    "workers_hut": { "w": 8, "h": 8, "texture": "workers_hut", "costs": { "gold": 80, "wood": 10 }, "name": "Maha Wadi Gedara (Town Center)", "icon": "🛖", "construction_duration_seconds": 30 },
+    "temple":      { "w": 12, "h": 12, "texture": "temple",      "costs": { "gold": 300, "wood": 20, "gem": 5 }, "name": "Devale (Shrine)", "icon": "🏛️", "construction_duration_seconds": 20 },
+    "lake":        { "w": 16, "h": 16, "texture": "lake",        "costs": { "gold": 50, "wood": 5 }, "name": "Lake", "icon": "🌊", "construction_duration_seconds": 20 },
+    "boat_house":  { "w": 8, "h": 8, "texture": "boat_house",  "costs": { "gold": 120, "wood": 15 }, "name": "Boat House", "icon": "⛵", "construction_duration_seconds": 30 },
+    "cow_farm":    { "w": 8, "h": 8, "texture": "cow_farm",    "costs": { "gold": 150, "wood": 20 }, "name": "Cow Farmer Hut", "icon": "🐄", "construction_duration_seconds": 20 },
+    "lumber_camp": { "w": 8, "h": 8, "texture": "workers_hut", "costs": { "gold": 60, "wood": 10 }, "name": "Lumber Camp", "icon": "🪓", "construction_duration_seconds": 15 },
+    "fence":       { "w": 4, "h": 4, "texture": "fence",       "costs": { "wood": 2 }, "name": "Fence", "icon": "🚧", "construction_duration_seconds": 0 },
+    "sena_kanda":  { "w": 12, "h": 12, "texture": "workers_hut", "costs": { "gold": 200, "wood": 25 }, "name": "Sena Kanda (War Barracks)", "icon": "⚔️", "construction_duration_seconds": 45 }
+  },
+  "troops": [
+    {
+      "id": "troop_padati_soldier",
+      "name": "Padati Soldier (පාබල සෙබළා)",
+      "role": "Frontline Swordsman Vanguard",
+      "housingSpaceCost": 1,
+      "ability": "Angam Swarm Aggression",
+      "whereCanBuildIt": "Sena Kanda (War Barracks) Level 1",
+      "unlockBuildCost": "100 Food",
+      "unlockBuildTime": "10 Seconds",
+      "trainingTime": "5 Seconds",
+      "attack_damage": 10,
+      "attack_range": 1,
+      "attack_speed_ms": 1500,
+      "whatItDoes": "Sprints to the nearest structural fortification or enemy unit, attacking with quick Kastane sword strikes.",
+      "description": "A fierce infantry foot soldier armed with a traditional blade. Highly effective when deployed in massive swarms to overwhelm outlying village structures."
+    },
+    {
+      "id": "troop_dunuvaya",
+      "name": "Dunuvaya (දුනුවායා)",
+      "role": "Ranged Archer Marksman",
+      "housingSpaceCost": 1,
+      "ability": "Ranged Arrow Volley",
+      "whereCanBuildIt": "Sena Kanda (War Barracks) Level 2",
+      "unlockBuildCost": "500 Food",
+      "unlockBuildTime": "15 Seconds",
+      "trainingTime": "6 Seconds",
+      "whatItDoes": "Fires high-arc arrows from a safe distance, enabling them to strike internal base targets directly over protective Stone Walls.",
+      "description": "A highly trained elite archer from the king's guard. Keeps their distance to pick off enemy defense towers and gold stockpiles safely."
+    },
+    {
+      "id": "troop_maha_yodha",
+      "name": "Maha Yodha (මහා යෝධයා)",
+      "role": "Heavy Defensive Shield Tank",
+      "housingSpaceCost": 5,
+      "ability": "Fortress Bashing",
+      "whereCanBuildIt": "Sena Kanda (War Barracks) Level 3",
+      "unlockBuildCost": "2,500 Food",
+      "unlockBuildTime": "2 Minutes",
+      "trainingTime": "30 Seconds",
+      "whatItDoes": "Completely bypasses normal citizen homes and resource silos to march straight toward the nearest active defensive fortification to smash it down.",
+      "description": "Inspired by the legendary giant warriors of old. Possesses immense health and physical strength, absorbing heavy fire to protect weaker units behind him."
+    },
+    {
+      "id": "troop_kollakaraya",
+      "name": "Kollakaraya (කොල්ලකරු)",
+      "role": "Resource Plunderer",
+      "housingSpaceCost": 1,
+      "ability": "Treasury Hustle (x2 Loot Damage)",
+      "whereCanBuildIt": "Sena Kanda (War Barracks) Level 4",
+      "unlockBuildCost": "5,000 Food",
+      "unlockBuildTime": "30 Minutes",
+      "trainingTime": "7 Seconds",
+      "whatItDoes": "Ignores all combatants to sprint directly toward Gold Mines and Food Silos, dealing double damage until the enemy's treasury is completely dried up.",
+      "description": "A swift, stealthy rogue who moves faster than any unit on the grid. Obsessed with gold and rations, making them perfect for lightning-fast resource raids."
+    },
+    {
+      "id": "troop_prakara_bhedaka",
+      "name": "Prakara Bhedaka (ප්‍රාකාර බිඳින්නා)",
+      "role": "Wall Demolisher",
+      "housingSpaceCost": 2,
+      "ability": "Kamikaze Exploding Keg (x40 Wall Damage)",
+      "whereCanBuildIt": "Sena Kanda (War Barracks) Level 5",
+      "unlockBuildCost": "20,000 Food",
+      "unlockBuildTime": "2 Hours",
+      "trainingTime": "1 Minute",
+      "whatItDoes": "Carries an explosive black-powder keg directly to the nearest sealed Stone Wall junction, detonating itself to blow wide gaps in enemy defenses.",
+      "description": "A daring sapper unit trained specifically to breach heavy royal fortifications, paving a clear open path for the main vanguard army to storm inside."
+    },
+    {
+      "id": "troop_mantrakaraya",
+      "name": "Mantrakaraya (මන්ත්‍රකාරයා)",
+      "role": "Splash Damage Sorcerer",
+      "housingSpaceCost": 4,
+      "ability": "Gini Jala Spell",
+      "whereCanBuildIt": "Sena Kanda (War Barracks) Level 7",
+      "unlockBuildCost": "270,000 Food",
+      "unlockBuildTime": "6 Hours",
+      "trainingTime": "2 Minutes",
+      "whatItDoes": "Channels ancient mystic arts to hurl exploding fireballs that incinerate tightly clustered groups of buildings or defending guard units at once.",
+      "description": "A powerful glass-cannon mystic master of elemental sorcery. Deals massive area-of-effect damage but has low defense against direct physical arrows."
+    },
+    {
+      "id": "troop_loha_yodha",
+      "name": "Loha Juggernaut (ලෝහ යෝධයා)",
+      "role": "Heavy Armored Iron Knight",
+      "housingSpaceCost": 25,
+      "ability": "Hardened Iron Cleave",
+      "whereCanBuildIt": "Sena Kanda (War Barracks) Level 10",
+      "unlockBuildCost": "1,400,000 Food",
+      "unlockBuildTime": "1 Day 12 Hours",
+      "trainingTime": "3 Minutes",
+      "whatItDoes": "Marches slowly across the battlefield, executing devastating heavy broadsword swings that instantly demolish high-HP structures.",
+      "description": "Encased fully in dense, heavy iron plate armor. This slow-moving titan possesses catastrophic single-target attack power and near-impenetrable defenses."
+    },
+    {
+      "id": "hero_maharaja",
+      "name": "Maharaja (මහාරාජා)",
+      "role": "Immortal King Tank Leader",
+      "housingSpaceCost": 0,
+      "ability": "Sri Handha (Royal Roar)",
+      "whereCanBuildIt": "Royal Simhasanaya Throne (Kingdom Level 7)",
+      "unlockBuildCost": "10,000 Gold",
+      "unlockBuildTime": "Instant",
+      "trainingTime": "Instant (No Rest Required)",
+      "whatItDoes": "Acts as the ultimate ground combat leader, tanking enemy defense strikes while dealing high-impact sword strikes.",
+      "description": "The supreme leader of the Rajadhani. Activating his Royal Roar instantly heals his wounds, triggers a speed/damage rage aura, and summons a loyal squad of Padati Soldiers to his side."
+    },
+    {
+      "id": "hero_bisawa",
+      "name": "Bisawa / Rani (රැජින)",
+      "role": "High-DPS Ranged Stealth Queen",
+      "housingSpaceCost": 0,
+      "ability": "Mayam Cloak (Stealth)",
+      "whereCanBuildIt": "Royal Simhasanaya Throne (Kingdom Level 9)",
+      "unlockBuildCost": "20,000 Gold",
+      "unlockBuildTime": "Instant",
+      "trainingTime": "Instant (No Rest Required)",
+      "whatItDoes": "Snipes down key defensive fortifications from extreme range using a modified high-tension Royal Bow with precise accuracy.",
+      "description": "The fierce tactical queen of the realm. Activating her Mayam Cloak turns her completely invisible to enemy defenses, dramatically spikes her arrow damage, and summons elite Dunuvaya archers to aid her."
+    }
+  ],
+  "resources": [
+    { "type": "tree", "yields": "wood", "spawnCount": 60 },
+    { "type": "deer", "yields": "food", "spawnCount": 20 },
+    { "type": "gem_rock", "yields": "gem", "spawnCount": 20 }
+  ]
+}

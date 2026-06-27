@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../bridge/js_bridge.dart';
+import '../bridge/game_view.dart';
 import '../models/historical_era.dart';
 import '../services/firestore_service.dart';
 import 'update_screen.dart';
 import 'sena_kanda_screen.dart';
 import 'login_screen.dart';
+import '../config/game_config.dart';
 
 class KingdomViewScreen extends StatefulWidget {
   final HistoricalEra era;
@@ -19,7 +22,17 @@ class KingdomViewScreen extends StatefulWidget {
 
 class _KingdomViewScreenState extends State<KingdomViewScreen> {
   Map<String, dynamic>? _hudData;
+  Map<String, dynamic>? _cloudDataCache;
   Timer? _cloudSyncTimer;
+  Timer? _updateCheckTimer;
+  bool _isBuildConfirmVisible = false;
+  int _buildConfirmCount = 1;
+  int _buildConfirmTime = 5;
+  int _buildConfirmCost = 2;
+  BuildContext? _contextualMenuContext;
+  BuildContext? _attackMenuContext;
+  bool _eraCompletionShown = false;
+  bool _buildingDetailsOpen = false;
 
   String _language = 'en';
 
@@ -31,11 +44,16 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     
     // Start background cloud sync every 60 seconds
     _cloudSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) => _syncToCloud());
+    // Check for game asset updates periodically
+    _updateCheckTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      JsBridge.callJs('checkRemoteAssetVersion', {});
+    });
   }
 
   @override
   void dispose() {
     _cloudSyncTimer?.cancel();
+    _updateCheckTimer?.cancel();
     super.dispose();
   }
 
@@ -44,8 +62,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       await FirestoreService.saveUserData({
         'gold': _hudData!['gold'] ?? 0,
         'tasks': _hudData!['tasks'] ?? {},
+        'needs': _hudData!['needs'] ?? {},
         'era_id': widget.era.id,
         'era_name': widget.era.name,
+        'buildings': _hudData!['buildings'] ?? [],
       });
     }
   }
@@ -55,13 +75,20 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     _language = prefs.getString('selected_language') ?? 'en';
     if (!mounted) return;
 
-    // Load cloud save data and inject into localPlayerData via JS
-    final cloudData = await FirestoreService.loadUserData();
-    if (cloudData != null) {
-      JsBridge.callJs('restorePlayerData', cloudData);
+    // Load cloud save data
+    _cloudDataCache = await FirestoreService.loadUserData();
+
+    // If on web, the JS is already injected and ready.
+    if (kIsWeb) {
+      _bootGameEngine();
+    }
+  }
+
+  void _bootGameEngine() {
+    if (_cloudDataCache != null) {
+      JsBridge.callJs('restorePlayerData', _cloudDataCache!);
     }
 
-    // Boot the game now that we bypassed EraSelectionScreen
     WidgetsBinding.instance.addPostFrameCallback((_) {
       JsBridge.callInitGameGrid(
         widget.era.id,
@@ -70,6 +97,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         0.0,
         0.0,
         _language,
+        GameConfig.instance.toJsonString(),
       );
     });
   }
@@ -100,6 +128,18 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         case 'Do you want to save your progress to the cloud before exiting?': return 'පිටවීමට පෙර ඔබගේ ප්‍රගතිය ක්ලවුඩ් වෙත සුරැකීමට අවශ්‍යද?';
         case 'Cancel': return 'අවලංගු කරන්න';
         case 'Exit Game': return 'පිටවීම';
+        case 'Era Objectives': return 'යුගයේ අරමුණු';
+        case 'Complete all objectives to advance.': return 'ඉදිරියට යාමට සියලු අරමුණු සම්පූර්ණ කරන්න.';
+        case 'ADVANCE TO NEXT ERA': return 'ඊළඟ යුගයට යන්න';
+        case 'Hunger': return 'බඩගින්න';
+        case 'Thirst': return 'පිපාසය';
+        case 'Hygiene': return 'පිරිසිදුකම';
+        case 'Toilet': return 'වැසිකිළිය';
+        case 'Health': return 'සෞඛ්‍යය';
+        case 'Fence': return 'වැට';
+        case 'Meat': return 'මස්';
+        case 'Milk': return 'කිරි';
+        case 'Cow Farm': return 'එළදෙනුන් ගොවිපල';
       }
     }
     return key;
@@ -110,8 +150,17 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     final type = data['type'];
     if (type == 'hud_update') {
       setState(() {
-        _hudData = data;
+        if (_hudData == null) {
+          _hudData = Map<String, dynamic>.from(data);
+        } else {
+          data.forEach((key, value) {
+            _hudData![key] = value;
+          });
+        }
       });
+      if (data['forceSync'] == true) {
+        _syncToCloud();
+      }
       // Cloud sync is now handled by _cloudSyncTimer in the background to save costs.
     } else if (type == 'version_mismatch') {
       Navigator.of(context).push(
@@ -123,7 +172,340 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           ),
         ),
       );
+    } else if (type == 'update_build_confirm') {
+      setState(() {
+        _buildConfirmCount = data['count'] ?? 1;
+        _buildConfirmTime = data['time'] ?? 5;
+        _buildConfirmCost = data['wood'] ?? 2;
+      });
+    } else if (type == 'show_build_confirm') {
+      setState(() {
+        _isBuildConfirmVisible = true;
+        // Default values for single placement fallback
+        if (data['count'] == null) {
+           _buildConfirmCount = 1;
+           _buildConfirmTime = 5;
+           _buildConfirmCost = 2;
+        }
+      });
+    } else if (type == 'close_build_confirm') {
+      setState(() => _isBuildConfirmVisible = false);
+    } else if (type == 'show_contextual_menu') {
+      _showContextualMenu(data);
+    } else if (type == 'show_building_details') {
+      if (!_buildingDetailsOpen) {
+        _buildingDetailsOpen = true;
+        _showBuildingDetails(data);
+      }
+    } else if (type == 'close_contextual_menu') {
+      if (_contextualMenuContext != null && Navigator.canPop(_contextualMenuContext!)) {
+        Navigator.pop(_contextualMenuContext!);
+        _contextualMenuContext = null;
+      }
+    } else if (type == 'show_attack_menu') {
+      _showAttackMenu(data);
+    } else if (type == 'show_death_overlay') {
+      _showDeathOverlay();
+    } else if (type == 'show_era_completion') {
+      if (!_eraCompletionShown) {
+        _eraCompletionShown = true;
+        _showEraCompletion();
+      }
+    } else if (type == 'era_upgraded') {
+      _showEraUpgraded(data);
+    } else if (type == 'webview_ready') {
+      _bootGameEngine();
+    } else if (type == 'show_offline_reward') {
+      _showOfflineReward(data);
+    } else if (type == 'show_snackbar') {
+      final message = data['message'] as String? ?? 'Error';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
+  }
+
+  void _showOfflineReward(Map<String, dynamic> data) {
+    final offlineTime = data['offlineTime'] ?? '?';
+    final rewards = List<String>.from(data['rewards'] ?? []);
+    if (rewards.isEmpty) return;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 300),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A120B),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFD4A017), width: 2),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.7), blurRadius: 24)],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF2C1A0E),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                ),
+                child: Column(
+                  children: [
+                    const Text('🏠', style: TextStyle(fontSize: 36)),
+                    const SizedBox(height: 6),
+                    const Text('Welcome Back!', style: TextStyle(color: Color(0xFFD4A017), fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text('Your kingdom worked for $offlineTime', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  ],
+                ),
+              ),
+              // Rewards list
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    ...rewards.map((r) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(r, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600))),
+                        ],
+                      ),
+                    )),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFD4A017),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Collect!', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Returns production stats for a building type.
+  List<Map<String, String>> _getProductionStats(String type) {
+    switch (type) {
+      case 'farm':      return [{'icon': '🌾', 'label': '+5 Food', 'rate': 'every 20s'}, {'icon': '🪙', 'label': '+10 Gold', 'rate': 'every 20s'}];
+      case 'cow_farm':  return [{'icon': '🥛', 'label': '+3 Milk', 'rate': 'every 3s'}];
+      case 'lumber_camp': return [{'icon': '🪵', 'label': '+2 Wood', 'rate': 'every 3s'}];
+      case 'mine':      return [{'icon': '🪙', 'label': '+25 Gold', 'rate': 'every 30s'}];
+      case 'house':     return [{'icon': '👨‍👩‍👧', 'label': 'Increases max population', 'rate': ''}];
+      case 'workers_hut': return [{'icon': '👷', 'label': '+1 Builder slot', 'rate': ''}];
+      case 'temple':    return [{'icon': '🙏', 'label': 'Boosts gem yield', 'rate': ''}];
+      case 'lake':      return [{'icon': '🐟', 'label': 'Fish on demand', 'rate': ''}];
+      case 'boat_house': return [{'icon': '🚢', 'label': 'Enables trade routes', 'rate': ''}];
+      case 'fence':     return [{'icon': '🔒', 'label': 'Blocks enemy paths', 'rate': ''}];
+      default:          return [{'icon': '📦', 'label': 'Passive bonus', 'rate': ''}];
+    }
+  }
+
+  /// Returns the gold cost to upgrade a building at the given level.
+  int _getUpgradeCost(String type, int level) {
+    const base = {'farm': 150, 'cow_farm': 120, 'lumber_camp': 120, 'mine': 200, 'house': 80, 'workers_hut': 180, 'temple': 300};
+    return ((base[type] ?? 100) * level * 1.5).toInt();
+  }
+
+  void _showBuildingDetails(Map<String, dynamic> data) {
+    final buildingType = data['buildingType'] ?? 'Unknown';
+    final bData = data['buildingData'] as Map? ?? {};
+    final level = (bData['level'] ?? 1) as int;
+    final nameEn = buildingType.toString().split('_')
+        .map((e) => e.isEmpty ? '' : e[0].toUpperCase() + e.substring(1))
+        .join(' ');
+    final displayName = _translate(nameEn);
+    final stats = _getProductionStats(buildingType.toString());
+    final upgradeCost = _getUpgradeCost(buildingType.toString(), level);
+    final currentGold = (_hudData?['gold'] ?? 0) as num;
+    final canAffordUpgrade = currentGold >= upgradeCost;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 320),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A120B),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.6), width: 2),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 20)],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2C1A0E),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(_getIconForBuildingType(buildingType.toString()), color: const Color(0xFFD4A017), size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(displayName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A017).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5)),
+                        ),
+                        child: Text('Lv $level', style: const TextStyle(color: Color(0xFFD4A017), fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Production Stats
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('📊 Production', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+                      const SizedBox(height: 8),
+                      ...stats.map((s) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36, height: 36,
+                              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(8)),
+                              child: Center(child: Text(s['icon']!, style: const TextStyle(fontSize: 18))),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(s['label']!, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+                            if ((s['rate'] ?? '').isNotEmpty)
+                              Text(s['rate']!, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                          ],
+                        ),
+                      )),
+                    ],
+                  ),
+                ),
+
+                const Divider(color: Colors.white12, indent: 16, endIndent: 16),
+
+                // Upgrade Button
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: canAffordUpgrade ? const Color(0xFFD4A017) : Colors.grey.shade800,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: canAffordUpgrade ? () {
+                            Navigator.pop(context);
+                            JsBridge.callJs('flutterGameAction', {
+                              'action': 'upgrade_building',
+                              'tx': bData['tx'],
+                              'ty': bData['ty'],
+                              'cost': upgradeCost,
+                            });
+                          } : null,
+                          icon: Icon(Icons.upgrade, color: canAffordUpgrade ? Colors.black87 : Colors.white38, size: 18),
+                          label: Text(
+                            '⬆ Upgrade  🪙 $upgradeCost',
+                            style: TextStyle(color: canAffordUpgrade ? Colors.black87 : Colors.white38, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                      if (!canAffordUpgrade)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 4),
+                          child: Text('Not enough Gold', style: TextStyle(color: Colors.redAccent, fontSize: 11)),
+                        ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.redAccent),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                minimumSize: const Size(0, 40),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                JsBridge.callJs('flutterGameAction', {
+                                  'action': 'remove_building',
+                                  'tx': bData['tx'],
+                                  'ty': bData['ty'],
+                                });
+                              },
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 16),
+                              label: const Text('Demolish', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.white24),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                minimumSize: const Size(0, 40),
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ).then((_) {
+      if (mounted) setState(() => _buildingDetailsOpen = false);
+    });
   }
 
   Future<void> _showExitDialog() async {
@@ -152,8 +534,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 await FirestoreService.saveUserData({
                   'gold': _hudData!['gold'] ?? 0,
                   'tasks': _hudData!['tasks'] ?? {},
+                  'needs': _hudData!['needs'] ?? {},
                   'era_id': widget.era.id,
                   'era_name': widget.era.name,
+                  'buildings': _hudData!['buildings'] ?? [],
                 });
               }
               await FirebaseAuth.instance.signOut();
@@ -177,13 +561,22 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         children: [
           // BASE LAYER: The Phaser Game
           const Positioned.fill(
-            child: HtmlElementView(viewType: 'phaser-game'),
+            child: GameViewWidget(),
           ),
 
           // TOP LAYER: The Game Dashboard (HUD)
           Positioned.fill(
             child: _buildDashboard(),
           ),
+
+          // BUILD CONFIRM OVERLAY
+          if (_isBuildConfirmVisible)
+            Positioned(
+              bottom: 100,
+              left: 0,
+              right: 0,
+              child: _buildConfirmOverlay(),
+            ),
         ],
       ),
     );
@@ -195,7 +588,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         children: [
           // Top HUD Row
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -216,6 +609,12 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                         alignment: Alignment.centerRight,
                         child: _buildTaskBar(),
                       ),
+                      const SizedBox(height: 8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: _buildNeedsBar(),
+                      ),
                     ],
                   ),
                 ),
@@ -225,7 +624,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           const Spacer(),
           // Bottom HUD Row (Controls/Menu)
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -238,10 +637,12 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                     alignment: Alignment.centerRight,
                     child: Row(
                       children: [
+                        _buildCircularButton(Icons.my_location, _translate('Find Player'), () {
+                          JsBridge.callJs('centerCameraOnPlayer', {});
+                        }),
+                        const SizedBox(width: 12),
                         _buildCircularButton(Icons.settings, _translate('Settings'), () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Settings coming soon!')),
-                          );
+                          _showSettingsMenu();
                         }),
                         const SizedBox(width: 12),
                         _buildActionButton(_translate('Train'), Icons.shield, Colors.redAccent, () {
@@ -263,7 +664,205 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     );
   }
 
+  void _showEraProgress() {
+    final tasks = _hudData?['tasks'] ?? {};
+    final config = _hudData?['config'] ?? {};
+    const taskKeys = ['house', 'workers_hut', 'temple', 'boat_house', 'lake', 'fish', 'fence'];
+    
+    // Check if fully complete
+    bool isComplete = true;
+    for (final key in taskKeys) {
+      final current = (tasks[key] ?? 0) as num;
+      final required = (config[key]?['req'] ?? 1) as num;
+      if (current < required) {
+        isComplete = false;
+        break;
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.95),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 2),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 16),
+                  Text(
+                    _translate('Era Objectives'),
+                    style: const TextStyle(color: Color(0xFFD4A017), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Tasks List
+                  ...taskKeys.map((key) {
+                    final current = (tasks[key] ?? 0) as num;
+                    final required = (config[key]?['req'] ?? 1) as num;
+                    final isTaskDone = current >= required;
+                    final icon = config[key]?['icon'] ?? '📌';
+                    final nameEn = config[key]?['label'] ?? key;
+                    final nameSi = config[key]?['sinLabel'] ?? nameEn;
+                    final displayName = _language == 'si' ? nameSi : nameEn;
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2C2520),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: isTaskDone ? Colors.green.withValues(alpha: 0.5) : Colors.white12),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(icon, style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              displayName,
+                              style: TextStyle(
+                                color: isTaskDone ? Colors.green : Colors.white,
+                                fontWeight: FontWeight.bold,
+                                decoration: isTaskDone ? TextDecoration.lineThrough : null,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${current.clamp(0, required)} / $required',
+                            style: TextStyle(
+                              color: isTaskDone ? Colors.green : Colors.white54,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (isTaskDone) const Icon(Icons.check_circle, color: Colors.green, size: 16)
+                          else const Icon(Icons.radio_button_unchecked, color: Colors.white54, size: 16),
+                        ],
+                      ),
+                    );
+                  }),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Next Era Button
+                  if (isComplete)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 40,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFADFF2F),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(_translate('Advancing to next Era is not implemented yet!'))),
+                          );
+                        },
+                        child: Text(
+                          _translate('ADVANCE TO NEXT ERA'),
+                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.0),
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      _translate('Complete all objectives to advance.'),
+                      style: const TextStyle(color: Colors.white54, fontStyle: FontStyle.italic, fontSize: 10),
+                    ),
+                  
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSettingsMenu() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2C1A10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+          ),
+          title: Text(
+            _translate('Settings'),
+            style: const TextStyle(
+              color: Color(0xFFD4AF37),
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Game Operations',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  JsBridge.forceAssetUpdate();
+                },
+                icon: const Icon(Icons.sync),
+                label: const Text('Update Game Resources'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showSenaKanda() {
+    final buildings = _hudData?['buildings'] as List? ?? [];
+    final hasBarracks = buildings.any((b) => b['type'] == 'sena_kanda' && b['is_completed'] == true);
+
+    if (!hasBarracks) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_translate('You must build a Sena Kanda (War Barracks) first!')),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -295,22 +894,27 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white38, borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
-              Text(_translate('Construct Building'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(_translate('Construct Building'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Wrap(
                 alignment: WrapAlignment.center,
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _buildMenuCard(_translate('House'), 'house', Icons.home, 50, 5, 0),
-                  _buildMenuCard(_translate('Farm'), 'farm', Icons.agriculture, 100, 10, 0),
-                  _buildMenuCard(_translate('Mine'), 'mine', Icons.construction, 150, 5, 5),
-                  _buildMenuCard(_translate('Workers'), 'workers_hut', Icons.people, 80, 10, 0),
-                  _buildMenuCard(_translate('Temple'), 'temple', Icons.account_balance, 300, 20, 5),
-                  _buildMenuCard(_translate('Lake'), 'lake', Icons.water, 50, 5, 0),
-                  _buildMenuCard(_translate('Boat'), 'boat_house', Icons.sailing, 120, 15, 0),
-                  _buildMenuCard(_translate('Fence'), 'fence', Icons.fence, 0, 2, 0),
-                ],
+                spacing: 8,
+                runSpacing: 8,
+                children: GameConfig.instance.buildings.entries.map((entry) {
+                  final type = entry.key;
+                  final bData = entry.value;
+                  final name = bData['name'] ?? type;
+                  final costs = bData['costs'] ?? {};
+                  
+                  return _buildMenuCard(
+                    _translate(name),
+                    type,
+                    _getIconForBuildingType(type),
+                    costs['gold'] ?? 0,
+                    costs['wood'] ?? 0,
+                    costs['gem'] ?? 0,
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 24),
             ],
@@ -318,6 +922,23 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         )));
       },
     );
+  }
+
+  IconData _getIconForBuildingType(String type) {
+    switch (type) {
+      case 'house': return Icons.home;
+      case 'farm': return Icons.agriculture;
+      case 'cow_farm': return Icons.pets;
+      case 'lumber_camp': return Icons.forest;
+      case 'mine': return Icons.construction;
+      case 'workers_hut': return Icons.people;
+      case 'temple': return Icons.account_balance;
+      case 'lake': return Icons.water;
+      case 'boat_house': return Icons.sailing;
+      case 'fence': return Icons.fence;
+      case 'sena_kanda': return Icons.shield;
+      default: return Icons.business;
+    }
   }
 
   Widget _buildMenuCard(String label, String type, IconData icon, int goldCost, int woodCost, int gemCost) {
@@ -344,22 +965,22 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         JsBridge.enterBuildMode(type); // Start CoC placement mode
       },
       child: Container(
-        width: 100,
-        padding: const EdgeInsets.all(12),
+        width: 80,
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
         child: Column(
           children: [
-            Icon(icon, color: Colors.white, size: 36),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            if (goldCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪙 ', style: TextStyle(fontSize: 10)), Text('$goldCost', style: const TextStyle(color: Colors.white, fontSize: 12))]),
-            if (woodCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪵 ', style: TextStyle(fontSize: 10)), Text('$woodCost', style: const TextStyle(color: Colors.white, fontSize: 12))]),
-            if (gemCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('💎 ', style: TextStyle(fontSize: 10)), Text('$gemCost', style: const TextStyle(color: Colors.white, fontSize: 12))]),
+            Icon(icon, color: Colors.white, size: 28),
+            const SizedBox(height: 6),
+            Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 6),
+            if (goldCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪙 ', style: TextStyle(fontSize: 8)), Text('$goldCost', style: const TextStyle(color: Colors.white, fontSize: 10))]),
+            if (woodCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('🪵 ', style: TextStyle(fontSize: 8)), Text('$woodCost', style: const TextStyle(color: Colors.white, fontSize: 10))]),
+            if (gemCost > 0) Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('💎 ', style: TextStyle(fontSize: 8)), Text('$gemCost', style: const TextStyle(color: Colors.white, fontSize: 10))]),
           ],
         ),
       ),
@@ -389,8 +1010,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     final overallProgress = taskCount > 0 ? totalProgress / taskCount : 0.0;
     final progressPercent = (overallProgress * 100).toInt();
 
-    return Container(
-      decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: _showEraProgress,
+      child: Container(
+        decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(40),
         border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 1.5),
@@ -402,10 +1025,9 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Avatar
           Container(
-            width: 48,
-            height: 48,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: const Color(0xFFD4A017), width: 2),
@@ -429,7 +1051,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  fontSize: 11,
                   shadows: [Shadow(color: Colors.black, blurRadius: 4)],
                 ),
               ),
@@ -437,7 +1059,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                 widget.era.name,
                 style: const TextStyle(
                   color: Color(0xFFD4A017),
-                  fontSize: 11,
+                  fontSize: 9,
                   shadows: [Shadow(color: Colors.black, blurRadius: 3)],
                 ),
               ),
@@ -445,14 +1067,14 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                     decoration: BoxDecoration(
                       color: const Color(0xFFD4A017),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       progressPercent >= 100 ? 'MAX' : 'Lv. ${progressPercent ~/ 10}',
-                      style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.bold),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -473,11 +1095,11 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
                     )
                   else
                     Container(
-                      width: 60,
-                      height: 6,
+                      width: 40,
+                      height: 4,
                       decoration: BoxDecoration(
                         color: Colors.black45,
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: BorderRadius.circular(2),
                         border: Border.all(color: Colors.black, width: 1),
                       ),
                       child: FractionallySizedBox(
@@ -500,31 +1122,30 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildResourceBar() {
     // Fallback to 0 if HUD data is not yet received
-    final tasks = _hudData?['tasks'] ?? {};
-    final config = _hudData?['config'] ?? {};
-
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildResourceItem('🪙', _translate('Gold'), _hudData?['gold'] ?? 500),
           _buildDivider(),
-          _buildResourceTaskItem('🪵', _translate('Wood'), 'wood', tasks, config),
+          _buildResourceItem('🪵', _translate('Wood'), ((_hudData?['wood'] ?? _hudData?['tasks']?['wood']) ?? 0).toInt()),
           _buildDivider(),
-          _buildResourceTaskItem('💎', _translate('Gems'), 'gem', tasks, config),
+          _buildResourceItem('💎', _translate('Gems'), ((_hudData?['gem'] ?? _hudData?['tasks']?['gem']) ?? 0).toInt()),
           _buildDivider(),
-          _buildResourceTaskItem('🏹', _translate('Food'), 'hunting', tasks, config),
+          _buildResourceItem('🥩', _translate('Meat'), _hudData?['meat'] ?? 0, rate: _hudData?['meatRate']),
+          _buildDivider(),
+          _buildResourceItem('🥛', _translate('Milk'), _hudData?['milk'] ?? 0, rate: _hudData?['milkRate']),
         ],
       ),
     );
@@ -533,64 +1154,143 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
 
   Widget _buildTaskBar() {
     final tasks = _hudData?['tasks'] ?? {};
-    final config = _hudData?['config'] ?? {};
+    final config = _hudData?['taskConfig'] ?? {};
+    
+    if (config.isEmpty) return const SizedBox.shrink();
+
+    List<Widget> taskWidgets = [];
+    config.forEach((key, taskCfg) {
+      taskWidgets.add(
+        _buildResourceTaskItem(
+          taskCfg['icon']?.toString() ?? '📌', 
+          taskCfg['label']?.toString() ?? key.toString(), 
+          key.toString(), 
+          tasks, 
+          config
+        )
+      );
+      taskWidgets.add(_buildDivider());
+    });
+    
+    // Remove last divider if not empty
+    if (taskWidgets.isNotEmpty) {
+      taskWidgets.removeLast();
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFD4A017).withValues(alpha: 0.5), width: 1),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: taskWidgets,
+      ),
+    );
+  }
+
+  Widget _buildNeedsBar() {
+    final needs = _hudData?['needs'] ?? {'hunger': 100, 'thirst': 100, 'hygiene': 100, 'toilet': 100};
+    final health = _hudData?['health'] ?? 100;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF005A9C).withValues(alpha: 0.5), width: 1),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildResourceTaskItem('🏠', _translate('House'), 'house', tasks, config),
+          _buildNeedItem('❤️', _translate('Health'), (health).toInt(), Colors.red),
           _buildDivider(),
-          _buildResourceTaskItem('🛖', _translate('Hut'), 'workers_hut', tasks, config),
+          _buildNeedItem('🍔', _translate('Hunger'), (needs['hunger'] ?? 100).toInt(), Colors.orange),
           _buildDivider(),
-          _buildResourceTaskItem('🏛️', _translate('Temple'), 'temple', tasks, config),
+          _buildNeedItem('💧', _translate('Thirst'), (needs['thirst'] ?? 100).toInt(), Colors.blue),
           _buildDivider(),
-          _buildResourceTaskItem('💧', _translate('Lake'), 'lake', tasks, config),
+          _buildNeedItem('🧼', _translate('Hygiene'), (needs['hygiene'] ?? 100).toInt(), Colors.teal),
           _buildDivider(),
-          _buildResourceTaskItem('🛶', _translate('Boat'), 'boat_house', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🐟', _translate('Fish'), 'fish', tasks, config),
-          _buildDivider(),
-          _buildResourceTaskItem('🚧', _translate('Fence'), 'fence', tasks, config),
+          _buildNeedItem('🚽', _translate('Toilet'), (needs['toilet'] ?? 100).toInt(), Colors.brown),
         ],
       ),
     );
   }
 
-  Widget _buildResourceItem(String icon, String name, int amount) {
+  Widget _buildNeedItem(String icon, String name, int amount, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Row(
         children: [
-          Text(icon, style: const TextStyle(fontSize: 16)),
-          const SizedBox(width: 6),
-          Text(
-            amount.toString(),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+          Text(icon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 40,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: amount / 100.0,
+                backgroundColor: Colors.white24,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 8,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildResourceTaskItem(String icon, String name, String key, Map tasks, Map config) {
+  Widget _buildResourceItem(String icon, String name, int amount, {int? rate}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 4),
+              Text(
+                amount.toString(),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+            ],
+          ),
+          if (rate != null && rate > 0)
+            Text(
+              '+$rate/hr',
+              style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 8, fontWeight: FontWeight.bold),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResourceTaskItem(String icon, String name, String key, Map tasks, Map config, {int? rate}) {
     final current = tasks[key] ?? 0;
     final target = config[key]?['req'] ?? '?';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(icon, style: const TextStyle(fontSize: 16)),
-          const SizedBox(width: 6),
-          Text(
-            '$current/$target',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+          Row(
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 4),
+              Text(
+                '$current/$target',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+            ],
           ),
+          if (rate != null && rate > 0)
+            Text(
+              '+$rate/hr',
+              style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 8, fontWeight: FontWeight.bold),
+            ),
         ],
       ),
     );
@@ -599,7 +1299,7 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
   Widget _buildDivider() {
     return Container(
       width: 1,
-      height: 20,
+      height: 12,
       color: Colors.white.withValues(alpha: 0.2),
     );
   }
@@ -611,17 +1311,17 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.black.withValues(alpha: 0.7),
               border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
+            child: Icon(icon, color: Colors.white, size: 18),
           ),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, shadows: [Shadow(blurRadius: 2)])),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 8, shadows: [Shadow(blurRadius: 2)])),
         ],
       ),
     );
@@ -631,32 +1331,612 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [color, color.withValues(alpha: 0.7)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
           boxShadow: [
-            BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6, offset: const Offset(0, 2)),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
+            Icon(icon, color: Colors.white, size: 14),
+            const SizedBox(width: 6),
             Text(
               label,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // --- Flutter Popup Implementations ---
+
+  Widget _buildConfirmOverlay() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (_buildConfirmCount > 1)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            margin: const EdgeInsets.only(bottom: 24),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFD4A017), width: 1.5),
+              boxShadow: [BoxShadow(color: const Color(0xFFD4A017).withValues(alpha: 0.4), blurRadius: 10)],
+            ),
+            child: Text(
+              _language == 'si' 
+                  ? '🧱 වැටවල් $_buildConfirmCount | 🪵 දැව $_buildConfirmCost | ⏳ ${_buildConfirmTime}s'
+                  : '🧱 $_buildConfirmCount Fences | 🪵 $_buildConfirmCost Wood | ⏳ ${_buildConfirmTime}s',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Confirm Button
+        GestureDetector(
+          onTap: () {
+            setState(() => _isBuildConfirmVisible = false);
+            JsBridge.callJs('flutterGameAction', {'action': 'confirm_build'});
+          },
+          child: Container(
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))],
+            ),
+            child: const Icon(Icons.check, color: Colors.white, size: 32),
+          ),
+        ),
+        const SizedBox(width: 32),
+        // Cancel Button
+        GestureDetector(
+          onTap: () {
+            setState(() => _isBuildConfirmVisible = false);
+            JsBridge.callJs('flutterGameAction', {'action': 'cancel_build'});
+          },
+          child: Container(
+            width: 60, height: 60,
+            decoration: BoxDecoration(
+              color: Colors.redAccent,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))],
+            ),
+            child: const Icon(Icons.close, color: Colors.white, size: 32),
+          ),
+        ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _showContextualMenu(Map<String, dynamic> data) {
+    if (_contextualMenuContext != null) {
+      Navigator.pop(_contextualMenuContext!);
+      _contextualMenuContext = null;
+    }
+
+    final resType = data['resType'];
+    final bool isBuilding = data['isBuilding'] ?? false;
+    final bool isHarvesting = data['isHarvesting'] ?? false;
+    final taskKey = data['taskKey'];
+    final tx = data['tx'];
+    final ty = data['ty'];
+    final cost = data['cost'] ?? 100;
+    final List<dynamic> yields = data['yields'] ?? [];
+    final bool isEraUpgradeReady = data['isEraUpgradeReady'] ?? false;
+    final bool isTownHall = data['isTownHall'] ?? false;
+    final int assignedWorkers = data['assignedWorkers'] ?? 0;
+    final int maxWorkers = data['maxWorkers'] ?? 5;
+
+    final labelMap = {
+      'tree': 'Tree', 'deer': 'Deer', 'gem_rock': 'Gem Rock', 'lake': 'Lake', 'fence': 'Fence', 
+      'border_tree': 'Dense Forest', 'house': 'House', 'farm': 'Farm', 'workers_hut': 'Workers Hut', 
+      'temple': 'Temple', 'boat_house': 'Boat House', 'cow_farm': 'Cow Farmer Hut', 
+      'lumber_camp': 'Lumber Camp', 'mine': 'Mine'
+    };
+    final labelMapSi = {
+      'tree': 'ගස', 'deer': 'මුවා', 'gem_rock': 'මැණික් ගල', 'lake': 'වැව', 'fence': 'වැට', 
+      'border_tree': 'ඝන කැලෑව', 'house': 'නිවස', 'farm': 'ගොවිපල', 'workers_hut': 'කම්කරු නිවස', 
+      'temple': 'පන්සල', 'boat_house': 'බෝට්ටු නිවස', 'cow_farm': 'එළදෙනුන් ගොවිපල', 
+      'lumber_camp': 'දැව කඳවුර', 'mine': 'පතල'
+    };
+
+    final String configName = GameConfig.instance.buildings[resType]?['name'] ?? resType;
+    final title = _language == 'si' ? (labelMapSi[resType] ?? configName) : (labelMap[resType] ?? configName);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        _contextualMenuContext = ctx;
+        return PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (bool didPop, dynamic result) {
+            if (didPop) {
+              _contextualMenuContext = null;
+              JsBridge.callJs('flutterGameAction', {'action': 'close_menu'});
+            }
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1F1A17).withValues(alpha: 0.98),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFD4AF37), width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 4))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const SizedBox(width: 24), // balance close button
+                    Text(
+                      title.toString().toUpperCase(),
+                      style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _contextualMenuContext = null;
+                        JsBridge.callJs('flutterGameAction', {'action': 'close_menu'});
+                      },
+                    )
+                  ],
+                ),
+                const Divider(color: Color(0xFFD4AF37)),
+                const SizedBox(height: 8),
+
+                // Content
+                if (resType == 'border_tree') ...[
+                  Text(
+                    _language == 'si' ? 'භූමිය පුළුල් කරන්නද?' : 'Expand Territory?',
+                    style: const TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _language == 'si' ? 'මිල: $cost 🪙' : 'Cost: $cost 🪙',
+                    style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF8B4513),
+                      side: const BorderSide(color: Color(0xFFD4AF37)),
+                      minimumSize: const Size(double.infinity, 44),
+                    ),
+                    icon: const Icon(Icons.cleaning_services, color: Colors.white),
+                    label: Text(_language == 'si' ? 'කැලෑව කපන්න' : 'Clear Forest', style: const TextStyle(color: Colors.white)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _contextualMenuContext = null;
+                      JsBridge.callJs('flutterGameAction', {'action': 'clear_border', 'tx': tx, 'ty': ty, 'cost': cost});
+                    },
+                  )
+                ] else if (resType == 'fence') ...[
+                  Text(
+                    _language == 'si' ? 'අස්වැන්න: +1 🪵' : 'Yield: +1 🪵',
+                    style: const TextStyle(color: Colors.green, fontSize: 15),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[800],
+                      side: const BorderSide(color: Colors.redAccent),
+                      minimumSize: const Size(double.infinity, 44),
+                    ),
+                    icon: const Icon(Icons.delete, color: Colors.white),
+                    label: Text(_translate('Remove'), style: const TextStyle(color: Colors.white)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _contextualMenuContext = null;
+                      JsBridge.callJs('flutterGameAction', {'action': 'remove_building', 'tx': tx, 'ty': ty});
+                    },
+                  )
+                ] else ...[
+                  if (yields.isNotEmpty) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_language == 'si' ? '⏱️ කාලය:' : '⏱️ Time:', style: const TextStyle(color: Colors.white70)),
+                        const Text('10s', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_language == 'si' ? '🎁 අස්වැන්න:' : '🎁 Yield:', style: const TextStyle(color: Colors.white70)),
+                        Text(yields.join('  '), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  if (isBuilding && ['workers_hut', 'lumber_camp', 'mine', 'farm', 'cow_farm', 'temple'].contains(resType)) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.people, color: Colors.blueAccent, size: 18),
+                              const SizedBox(width: 8),
+                              Text(_language == 'si' ? 'සේවකයින්:' : 'Assigned Workers:', style: const TextStyle(color: Colors.white70)),
+                            ],
+                          ),
+                          Text('$assignedWorkers / $maxWorkers', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  if (!isHarvesting) ...[
+                    if (resType == 'lake' || !isBuilding)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[800],
+                          side: const BorderSide(color: Colors.lightGreen),
+                          minimumSize: const Size(double.infinity, 44),
+                        ),
+                        icon: const Icon(Icons.agriculture, color: Colors.white),
+                        label: Text(_language == 'si' ? 'අස්වනු නෙලන්න' : 'Start Harvest', style: const TextStyle(color: Colors.white)),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _contextualMenuContext = null;
+                          JsBridge.callJs('flutterGameAction', {'action': 'start_harvest', 'tx': tx, 'ty': ty, 'taskKey': taskKey});
+                        },
+                      )
+                    else
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber[800],
+                          side: const BorderSide(color: Colors.amberAccent),
+                          minimumSize: const Size(double.infinity, 44),
+                        ),
+                        icon: const Icon(Icons.flash_on, color: Colors.black),
+                        label: Text(_language == 'si' ? '50 රත්‍රන්' : '50 Gold Boost', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _contextualMenuContext = null;
+                          JsBridge.callJs('flutterGameAction', {'action': 'boost_harvest', 'tx': tx, 'ty': ty, 'taskKey': taskKey});
+                        },
+                      ),
+                  ],
+
+                  // Needs Actions
+                  const SizedBox(height: 12),
+                  if (isTownHall) ...[
+                     ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isEraUpgradeReady ? const Color(0xFFD4A017) : Colors.grey,
+                          side: BorderSide(color: isEraUpgradeReady ? Colors.white : Colors.black54),
+                          minimumSize: const Size(double.infinity, 44),
+                        ),
+                        icon: const Icon(Icons.upgrade, color: Colors.black),
+                        label: Text(
+                          isEraUpgradeReady 
+                            ? (_language == 'si' ? 'ඊළඟ යුගයට යන්න' : 'Advance to Next Era')
+                            : (_language == 'si' ? 'අරමුණු සම්පූර්ණ කරන්න' : 'Complete Tasks to Upgrade'),
+                          style: TextStyle(color: isEraUpgradeReady ? Colors.black : Colors.black54, fontWeight: FontWeight.bold)
+                        ),
+                        onPressed: isEraUpgradeReady ? () {
+                          Navigator.pop(ctx);
+                          _contextualMenuContext = null;
+                          JsBridge.callJs('flutterGameAction', {'action': 'upgrade_era'});
+                        } : null,
+                      ),
+                      const SizedBox(height: 12),
+                  ],
+                  if (resType == 'farm' || resType == 'deer')
+                    _buildNeedsButton('🍔', _language == 'si' ? 'ආහාර ගන්න' : 'Eat Food', () {
+                      JsBridge.callJs('flutterGameAction', {'action': 'feed_player', 'amount': 40});
+                    }),
+                  if (resType == 'lake') ...[
+                    Row(
+                      children: [
+                        Expanded(child: _buildNeedsButton('💧', _language == 'si' ? 'බොන්න' : 'Drink', () {
+                          JsBridge.callJs('flutterGameAction', {'action': 'hydrate_player', 'amount': 30});
+                        })),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNeedsButton('🧼', _language == 'si' ? 'නාන්න' : 'Bathe', () {
+                          JsBridge.callJs('flutterGameAction', {'action': 'clean_player', 'amount': 50});
+                        })),
+                      ],
+                    )
+                  ],
+                  if (resType == 'house' || resType == 'workers_hut' || resType == 'tree')
+                    _buildNeedsButton('🚽', _language == 'si' ? 'වැසිකිළිය' : 'Use Toilet', () {
+                      JsBridge.callJs('flutterGameAction', {'action': 'toilet_player'});
+                    }),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNeedsButton(String icon, String label, VoidCallback onTap) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF005A9C),
+        side: const BorderSide(color: Colors.lightBlue),
+        minimumSize: const Size(double.infinity, 36),
+      ),
+      onPressed: () {
+        if (_contextualMenuContext != null) {
+          Navigator.pop(_contextualMenuContext!);
+          _contextualMenuContext = null;
+        }
+        onTap();
+      },
+      child: Text('$icon $label', style: const TextStyle(color: Colors.white, fontSize: 13)),
+    );
+  }
+
+  void _showAttackMenu(Map<String, dynamic> data) {
+    if (_attackMenuContext != null) {
+      Navigator.pop(_attackMenuContext!);
+      _attackMenuContext = null;
+    }
+
+    final String name = data['kingdomName'] ?? 'Enemy';
+    final int level = data['level'] ?? 1;
+    final int gold = data['gold'] ?? 0;
+    final int loot = (gold * 0.4).floor();
+    final tx = data['tx'];
+    final ty = data['ty'];
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        _attackMenuContext = ctx;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A0505).withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.redAccent, width: 2),
+              boxShadow: [BoxShadow(color: Colors.redAccent.withValues(alpha: 0.3), blurRadius: 20)],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '⚔️ RAID — $name',
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '🏆 Level $level   |   🪙 ~$loot Gold loot',
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[800],
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _attackMenuContext = null;
+                    JsBridge.callJs('flutterGameAction', {'action': 'execute_attack', 'tx': tx, 'ty': ty});
+                  },
+                  child: const Text('⚔️ ATTACK NOW', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _attackMenuContext = null;
+                  },
+                  child: const Text('✖ Cancel', style: TextStyle(color: Colors.white54)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeathOverlay() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        return PopScope(
+          canPop: false, // Prevent dismissing
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _language == 'si' ? 'අධික වෙහෙස නිසා ඔබ මිය ගියේය.' : 'You have perished from exhaustion.',
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    side: const BorderSide(color: Colors.greenAccent),
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    JsBridge.callJs('flutterGameAction', {'action': 'respawn'});
+                  },
+                  child: Text(_language == 'si' ? '[ නැවත ඉපදෙන්න ]' : '[ RESPAWN ]', style: const TextStyle(color: Colors.greenAccent, fontSize: 20, letterSpacing: 2.0)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEraUpgraded(Map<String, dynamic> data) {
+    final newEraName = data['newEraName'] ?? 'Next Era';
+    
+    // Save to Firestore explicitly
+    if (_hudData != null) {
+      _hudData!['era_id'] = data['newEraId'];
+      _hudData!['era_name'] = newEraName;
+      _hudData!['tasks'] = {};
+      _syncToCloud();
+    }
+    
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      transitionDuration: const Duration(milliseconds: 500),
+      pageBuilder: (context, anim1, anim2) {
+        return Center(
+          child: ScaleTransition(
+            scale: CurvedAnimation(parent: anim1, curve: Curves.elasticOut),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F1A17),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFD4AF37), width: 3),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.auto_awesome, color: Color(0xFFD4AF37), size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    _language == 'si' ? 'නව යුගයකට පිවිසේ!' : 'Era Advancing!',
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    newEraName.toString(),
+                    style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 18, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                  ),
+                  const SizedBox(height: 16),
+                  const CircularProgressIndicator(color: Color(0xFFD4AF37)),
+                  const SizedBox(height: 16),
+                  Text(
+                    _language == 'si' ? 'ලෝකය නැවත ගොඩනැගෙමින් පවතී...' : 'Rebuilding the world...',
+                    style: const TextStyle(color: Colors.white70, fontSize: 14, decoration: TextDecoration.none),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    
+    // Pop the dialog after 2.5 seconds, then reboot Phaser after animation completes
+    Future.delayed(const Duration(milliseconds: 2500), () async {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        await Future.delayed(const Duration(milliseconds: 600)); // wait for 500ms pop transition
+        JsBridge.callJs('flutterGameAction', {'action': 'force_reboot'});
+      }
+    });
+  }
+
+  void _showEraCompletion() {
+    final titleText = _language == 'si' ? 'යුගය ජයග්‍රහණය කරන ලදී!' : 'Era Completed!';
+    final subText = _language == 'si' ? 'යුගය සම්පූර්ණයි!' : 'You have completed all objectives for this era.';
+    final btnString = _language == 'si' ? '📦 සිතියමට යන්න' : '📦 Return to Map';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E2A38).withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFD4AF37), width: 3),
+              boxShadow: [BoxShadow(color: const Color(0xFFD4AF37).withValues(alpha: 0.3), blurRadius: 30)],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.emoji_events, color: Color(0xFFD4AF37), size: 64),
+                const SizedBox(height: 16),
+                Text(
+                  titleText,
+                  style: const TextStyle(color: Color(0xFFD4AF37), fontSize: 22, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  subText,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4AF37),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    JsBridge.showFlutterUi();
+                  },
+                  child: Text(btnString, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                )
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

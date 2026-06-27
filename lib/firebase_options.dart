@@ -38,14 +38,14 @@ class DefaultFirebaseOptions {
     storageBucket: 'rajadhanigamesl.firebasestorage.app',
     measurementId: 'G-JDML960GB4',
   );
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'REPLACE_WITH_API_KEY',
-    appId: 'REPLACE_WITH_APP_ID',
-    messagingSenderId: 'REPLACE_WITH_SENDER_ID',
-    projectId: 'rajadhanigamesl',
-    storageBucket: 'rajadhanigamesl.appspot.com',
-  );
 
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyCjtDCSbXjGaijuGNDk-vjYLrSomxAqe_A',
+    appId: '1:999174467302:android:55354416d69f7cef7f1527',
+    messagingSenderId: '999174467302',
+    projectId: 'rajadhanigamesl',
+    storageBucket: 'rajadhanigamesl.firebasestorage.app',
+  );
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'REPLACE_WITH_API_KEY',
     appId: 'REPLACE_WITH_APP_ID',
