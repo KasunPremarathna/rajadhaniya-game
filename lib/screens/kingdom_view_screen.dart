@@ -31,6 +31,8 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
   int _buildConfirmCost = 2;
   BuildContext? _contextualMenuContext;
   BuildContext? _attackMenuContext;
+  bool _eraCompletionShown = false;
+  bool _buildingDetailsOpen = false;
 
   String _language = 'en';
 
@@ -191,7 +193,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     } else if (type == 'show_contextual_menu') {
       _showContextualMenu(data);
     } else if (type == 'show_building_details') {
-      _showBuildingDetails(data);
+      if (!_buildingDetailsOpen) {
+        _buildingDetailsOpen = true;
+        _showBuildingDetails(data);
+      }
     } else if (type == 'close_contextual_menu') {
       if (_contextualMenuContext != null && Navigator.canPop(_contextualMenuContext!)) {
         Navigator.pop(_contextualMenuContext!);
@@ -202,7 +207,10 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
     } else if (type == 'show_death_overlay') {
       _showDeathOverlay();
     } else if (type == 'show_era_completion') {
-      _showEraCompletion();
+      if (!_eraCompletionShown) {
+        _eraCompletionShown = true;
+        _showEraCompletion();
+      }
     } else if (type == 'era_upgraded') {
       _showEraUpgraded(data);
     } else if (type == 'webview_ready') {
@@ -495,7 +503,9 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
           ),
         );
       },
-    );
+    ).then((_) {
+      if (mounted) setState(() => _buildingDetailsOpen = false);
+    });
   }
 
   Future<void> _showExitDialog() async {
