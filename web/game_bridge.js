@@ -172,7 +172,7 @@
       console.log('[Cache] match (' + GAME_ASSET_VERSION + ') – booting');
       bootPhaserGame(false);
       /* Notify Flutter that the game is starting (cache-hit path) */
-      window.notifyFlutter({ type: 'game_started' });
+      window.notifyFlutter({ type: 'game_started', version: GAME_ASSET_VERSION });
     } else {
       console.log('[Cache] mismatch stored=' + (stored || 'none') + ' expected=' + GAME_ASSET_VERSION);
       /* keep flutter visible so the update dialog appears */

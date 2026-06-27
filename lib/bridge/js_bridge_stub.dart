@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class JsBridge {
   JsBridge._();
@@ -32,8 +34,29 @@ class JsBridge {
     webViewController?.runJavaScript("window.forceAssetUpdate()");
   }
 
-  static void checkAssetVersion() {
-    webViewController?.runJavaScript("window.checkAssetVersion()");
+  static void checkAssetVersion() async {
+    try {
+      final request = await HttpClient().getUrl(Uri.parse('https://rajadhanigamesl.web.app/version.json?t=${DateTime.now().millisecondsSinceEpoch}'));
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      final data = jsonDecode(body);
+      final remoteVersion = data['version'] as String;
+      
+      final prefs = await SharedPreferences.getInstance();
+      final localVersion = prefs.getString('rajadhaniya_asset_version') ?? 'none';
+      
+      if (remoteVersion != localVersion) {
+        if (_flutterCallback != null) {
+          _flutterCallback!({
+            'type': 'version_mismatch',
+            'storedVersion': localVersion,
+            'expectedVersion': remoteVersion
+          });
+        }
+      }
+    } catch (e) {
+      // fallback if network fails
+    }
   }
 
   static void enterBuildMode(String buildingType) {

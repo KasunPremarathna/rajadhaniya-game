@@ -110,6 +110,12 @@ class _RajadhaniyaAppState extends State<RajadhaniyaApp> {
         );
       }
     } else if (type == 'game_started') {
+      final version = data['version'] as String?;
+      if (version != null) {
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('rajadhaniya_asset_version', version);
+        });
+      }
       EraSelectionScreen.onGameStarted?.call();
     }
   }
