@@ -4,7 +4,7 @@
   /* ════════════════════════════════════════════════════════
      STEP 1 – Asset Version Control & Configuration
      ════════════════════════════════════════════════════════ */
-  var GAME_ASSET_VERSION = 'v1.5.1';
+  var GAME_ASSET_VERSION = 'v1.5.2';
   var STORAGE_KEY = 'rajadhaniya_asset_version';
   var ERA_UNLOCK_KEY = 'era_anuradhapura_unlocked';
   var MAX_W = 960;
@@ -642,9 +642,13 @@
         s.load.image('lake', eraFolder + 'lake.webp' + v);
         s.load.image('boat_house', eraFolder + 'boat_house.webp' + v);
         s.load.image('cow_farm', eraFolder + 'cow_farm.webp' + v);
+        // lumber_camp and sena_kanda reuse existing textures (workers_hut)
+        // No separate file needed — BUILDINGS_CONFIG maps them to 'workers_hut' texture
         
         s.load.image('fence', eraFolder + 'fence.webp' + v);
         s.load.image('enemy_base', eraFolder + 'enemy_base.webp' + v);
+        s.load.image('sena_kanda', eraFolder + 'workers_hut.webp' + v);
+        s.load.image('lumber_camp', eraFolder + 'workers_hut.webp' + v);
         /* particles */
         var pg1 = s.add.graphics();
         pg1.fillStyle(0x4CAF50, 1); pg1.fillCircle(4, 4, 4);
@@ -1334,6 +1338,56 @@
         loop: true,
         callback: function() {
           localStorage.setItem('rajadhaniya_last_session', Date.now().toString());
+        }
+      });
+
+      /* ── Active In-Game Passive Production (fires every 20s) ── */
+      scene.time.addEvent({
+        delay: 20000,
+        loop: true,
+        callback: function() {
+          var completedBuildings = scene._buildings ? scene._buildings.filter(function(b) { return b.is_completed; }) : [];
+          if (completedBuildings.length === 0) return;
+
+          var productionPerTick = {
+            farm:        { food: 5, gold: 10 },   // 5 food + 10 gold per 20s
+            cow_farm:    { milk: 3 },              // 3 milk per 20s
+            mine:        { gold: 25 },             // 25 gold per 20s (but 30s rate — close enough)
+            lumber_camp: { wood: 2 }               // 2 wood per 20s (but 3s rate scaled down)
+          };
+
+          var earned = [];
+          completedBuildings.forEach(function(b) {
+            var rate = productionPerTick[b.type];
+            if (!rate) return;
+            var lvMult = b.level || 1;
+            for (var res in rate) {
+              var amount = Math.floor(rate[res] * lvMult);
+              if (amount <= 0) continue;
+              if (res === 'gold') {
+                localPlayerData.gold += amount;
+                earned.push({ res: res, amount: amount, x: b.sprite ? b.sprite.x : 0, y: b.sprite ? b.sprite.y : 0 });
+              } else if (res === 'food') {
+                localPlayerData.inventory = localPlayerData.inventory || {};
+                localPlayerData.inventory.food = (localPlayerData.inventory.food || 0) + amount;
+              } else if (res === 'milk') {
+                localPlayerData.inventory = localPlayerData.inventory || {};
+                localPlayerData.inventory.milk = (localPlayerData.inventory.milk || 0) + amount;
+              } else if (res === 'wood') {
+                taskProgress['wood'] = (taskProgress['wood'] || 0) + amount;
+                earned.push({ res: res, amount: amount, x: b.sprite ? b.sprite.x : 0, y: b.sprite ? b.sprite.y : 0 });
+              }
+              // Float text for visual feedback on first 3 buildings only (avoid spam)
+              if (b.sprite && b.sprite.active && earned.length <= 3) {
+                var icon = res === 'gold' ? '\uD83E\uDE99' : res === 'milk' ? '\uD83E\uDD5B' : res === 'food' ? '\uD83C\uDF3E' : '\uD83E\uDEB5';
+                floatText(scene, icon + ' +' + amount, b.sprite.x, b.sprite.y - 40, res === 'gold' ? '#FFD700' : res === 'wood' ? '#8B5A2B' : '#FFFDE7');
+              }
+            }
+          });
+
+          if (earned.length > 0) {
+            refreshHud(scene);
+          }
         }
       });
 
@@ -3204,10 +3258,12 @@
         }
       }
 
-      // Move sprite
+      // Move sprite — restore level-appropriate scale, don't hard-reset to 0.12
       var newPos = tileToWorld(newTx, newTy, ox, oy);
       editMode.sprite.setPosition(newPos.x, newPos.y);
-      editMode.sprite.setScale(0.12);
+      var lvScales = [0.12, 0.16, 0.20, 0.25, 0.30];
+      var repositionScale = lvScales[Math.min((editMode.level || 1) - 1, lvScales.length - 1)];
+      editMode.sprite.setScale(repositionScale);
       editMode.tx = newTx;
       editMode.ty = newTy;
 
@@ -3230,8 +3286,10 @@
 
     function cancelReposition(scene) {
       if (!editMode) return;
-      // Reset sprite back to normal
-      editMode.sprite.setScale(0.12);
+      // Restore level-appropriate scale on cancel — don't hard-reset to 0.12
+      var lvScales = [0.12, 0.16, 0.20, 0.25, 0.30];
+      var cancelScale = lvScales[Math.min((editMode.level || 1) - 1, lvScales.length - 1)];
+      editMode.sprite.setScale(cancelScale);
       var origPos = tileToWorld(editOrigTx, editOrigTy, scene._ox, scene._oy);
       editMode.sprite.setPosition(origPos.x, origPos.y);
       if (editGhost) { editGhost.destroy(); editGhost = null; }
@@ -3517,7 +3575,8 @@
          return {
             tx: b.tx, ty: b.ty, w: b.w, h: b.h, type: b.type,
             is_completed: b.is_completed,
-            completion_timestamp: b.completion_timestamp
+            completion_timestamp: b.completion_timestamp,
+            level: b.level || 1
          };
       }) : [];
 

@@ -209,6 +209,19 @@ class _KingdomViewScreenState extends State<KingdomViewScreen> {
       _bootGameEngine();
     } else if (type == 'show_offline_reward') {
       _showOfflineReward(data);
+    } else if (type == 'show_snackbar') {
+      final message = data['message'] as String? ?? 'Error';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
